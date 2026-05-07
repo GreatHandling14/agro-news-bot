@@ -1,0 +1,30 @@
+name: Post Agro News to VK
+
+on:
+  schedule:
+    - cron: '0 */4 * * *'  # Каждые 4 часа
+  workflow_dispatch:  # Возможность запустить вручную
+
+jobs:
+  post-news:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+      
+      - name: Run news poster
+        env:
+          VK_ACCESS_TOKEN: ${{ secrets.VK_ACCESS_TOKEN }}
+          VK_GROUP_ID: ${{ secrets.VK_GROUP_ID }}
+          RSS_URL: ${{ secrets.RSS_URL }}
+        run: python main.py
