@@ -8,7 +8,7 @@ import feedparser
 from datetime import datetime
 
 # === КОНФИГУРАЦИЯ ===
-RSS_URL = os.getenv('RSS_URL', 'https://newsnovosti.ru/agro-rossii-novosti/feed/')
+RSS_URL = os.getenv('RSS_URL', 'https://www.agroinvestor.ru/feed/public-agroinvestor-articles.xml')
 VK_ACCESS_TOKEN = os.getenv('VK_ACCESS_TOKEN')
 VK_GROUP_ID = os.getenv('VK_GROUP_ID')
 
