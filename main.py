@@ -131,6 +131,10 @@ def post_to_vk(message, link=None):
     """Публикует пост в VK"""
     url = 'https://api.vk.com/method/wall.post'
     
+    # Добавляем ссылку в конец сообщения (если есть)
+    if link and link not in message:
+        message = message + f'\n\n🔗 {link}'
+    
     params = {
         'owner_id': f'-{VK_GROUP_ID}',  # Минус для группы
         'message': message,
@@ -138,9 +142,7 @@ def post_to_vk(message, link=None):
         'v': '5.199'
     }
     
-    if link:
-        params['attachments'] = link
-    
+    # УБРАЛИ attachments - VK сам создаст preview из ссылки в тексте
     response = requests.post(url, data=params)
     result = response.json()
     
