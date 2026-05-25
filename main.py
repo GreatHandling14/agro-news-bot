@@ -73,7 +73,8 @@ def parse_rss(rss_url):
             description = entry.get('description', '')
             
             # Очищаем description от HTML тегов
-            clean_desc = re.sub(r'<[^>]+>', '', description)[:300]
+            # Очищаем от HTML но оставляем до 1000 символов
+            clean_desc = re.sub(r'<[^>]+>', '', description)[:1000]
             
             # Пропускаем заголовок канала
             if not title or not link:
