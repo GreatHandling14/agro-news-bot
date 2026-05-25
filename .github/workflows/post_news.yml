@@ -2,7 +2,7 @@ name: Post Agro News to VK
 
 on:
   schedule:
-    - cron: '0 */4 * * *'  # Каждые 4 часа
+    - cron: '0 */12 * * *'  # Каждые 12 часов
   workflow_dispatch:  # Возможность запустить вручную
 
 jobs:
