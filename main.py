@@ -54,28 +54,47 @@ def save_published(url, title):
 
 def parse_rss(rss_url):
     """Парсит RSS ленту"""
-    feed = feedparser.parse(rss_url)
-    items = []
+    print(f"   RSS URL: {rss_url}")
     
-    for entry in feed.entries:
-        title = entry.get('title', '')
-        link = entry.get('link', '')
-        description = entry.get('description', '')
+    try:
+        response = requests.get(rss_url, timeout=10)
+        print(f"   Status code: {response.status_code}")
         
-        # Очищаем description от HTML тегов
-        clean_desc = re.sub(r'<[^>]+>', '', description)[:300]
+        feed = feedparser.parse(response.content)
         
-        # Пропускаем заголовок канала
-        if 'Агро XXI' in title or 'Комментарии' in title:
-            continue
+        print(f"   Feed title: {feed.feed.get('title', 'Unknown')}")
+        print(f"   Number of entries: {len(feed.entries)}")
         
-        items.append({
-            'title': title,
-            'link': link,
-            'description': clean_desc
-        })
-    
-    return items
+        items = []
+        for i, entry in enumerate(feed.entries):
+            # CDATA автоматически парсится в feedparser
+            title = entry.get('title', '').strip()
+            link = entry.get('link', '').strip()
+            description = entry.get('description', '')
+            
+            # Очищаем description от HTML тегов
+            clean_desc = re.sub(r'<[^>]+>', '', description)[:300]
+            
+            # Пропускаем заголовок канала
+            if not title or not link:
+                continue
+            
+            print(f"   Entry {i+1}: {title[:50]}...")
+            
+            items.append({
+                'title': title,
+                'link': link,
+                'description': clean_desc
+            })
+        
+        print(f"   ✅ Всего новостей: {len(items)}")
+        return items
+        
+    except Exception as e:
+        print(f"   ❌ Ошибка парсинга: {e}")
+        import traceback
+        traceback.print_exc()
+        return []
 
 def filter_news(items, published_urls):
     """Фильтрует уже опубликованные новости"""
