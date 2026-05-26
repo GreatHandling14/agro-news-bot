@@ -12,7 +12,7 @@ import subprocess
 RSS_URLS = [
     'https://www.agroinvestor.ru/feed/public-agronews.xml',
     'https://vesti365.ru/novosti-agro-rossii/',
-    'https://agri-news.ru/feed/',
+    'https://agri-news.ru/feed/'
     # Можно добавить ещё источники
 ]
 
@@ -108,20 +108,17 @@ def parse_all_rss():
     for rss_url in RSS_URLS:
         print(f"\n📰 Парсинг: {rss_url[:50]}...")
         
-         try:
+        try:
             response = requests.get(rss_url, timeout=10)
-            print(f"   Status: {response.status_code}")
-            
             feed = feedparser.parse(response.content)
-            print(f"   Feed title: {feed.feed.get('title', 'Unknown')}")
+            
             print(f"   Найдено: {len(feed.entries)}")
             
-            # Покажи первые 3 новости для проверки
-            for i, entry in enumerate(feed.entries[:3]):
-                title = entry.get('title', '')
-                link = entry.get('link', '')
+            for entry in feed.entries:
+                title = entry.get('title', '').strip()
+                link = entry.get('link', '').strip()
+                description = entry.get('description', '')
                 pub_date = entry.get('published', '')
-                print(f"   {i+1}. {title[:60]}... ({pub_date[:20] if pub_date else 'no date'})")
                 
                 # Парсим дату
                 try:
