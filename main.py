@@ -29,15 +29,22 @@ PUBLISHED_FILE = 'published.json'
 def load_published():
     """Загружает список опубликованных URL"""
     try:
-        # Пробуем скачать из репозитория
+        # Скачиваем published.json из репозитория
         repo = os.getenv('GITHUB_REPOSITORY')
-        url = f'https://raw.githubusercontent.com/{repo}/main/published.json'
+        token = os.getenv('GITHUB_TOKEN')
+        url = f'https://api.github.com/repos/{repo}/contents/published.json'
         
-        response = requests.get(url, timeout=10)
+        headers = {'Authorization': f'token {token}'} if token else {}
+        response = requests.get(url, headers=headers, timeout=10)
+        
         if response.status_code == 200:
             data = response.json()
-            print(f"   📥 Загружено {len(data)} опубликованных URL")
-            return data
+            # Декодируем base64
+            import base64
+            content = base64.b64decode(data['content']).decode('utf-8')
+            published = json.loads(content)
+            print(f"   📥 Загружено {len(published)} опубликованных URL")
+            return published
         else:
             print("   📭 Файл не найден (первый запуск)")
             return []
