@@ -3,7 +3,10 @@ name: Post Agro News to VK
 on:
   schedule:
     - cron: '0 */12 * * *'  # Каждые 12 часов
-  workflow_dispatch:  # Возможность запустить вручную
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   post-news:
@@ -12,6 +15,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
       
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -26,5 +31,5 @@ jobs:
         env:
           VK_ACCESS_TOKEN: ${{ secrets.VK_ACCESS_TOKEN }}
           VK_GROUP_ID: ${{ secrets.VK_GROUP_ID }}
-          RSS_URL: ${{ secrets.RSS_URL }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python main.py
