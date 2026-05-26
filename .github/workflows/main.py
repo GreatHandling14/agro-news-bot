@@ -140,6 +140,10 @@ def main():
     items = parse_rss(RSS_URL)
     print(f"   Найдено новостей: {len(items)}")
     
+    if not items:
+        print("❌ Нет новостей в RSS")
+        return
+    
     # 2. Загружаем опубликованные
     print("📋 Загрузка опубликованных...")
     published_urls = [item['url'] for item in load_published()]
@@ -154,33 +158,75 @@ def main():
         print("✅ Нет новых новостей для публикации")
         return
     
-    # 4. Выбираем случайную из первых 3
-    selected = random.choice(new_items[:min(3, len(new_items))])
-    print(f"\n📰 Выбрана новость: {selected['title'][:50]}...")
+    # 4. Выбираем 6-7 последних новостей
+    news_batch = new_items[:7]  # Берем максимум 7
+    print(f"\n📋 Формируем дайджест из {len(news_batch)} новостей...")
     
-    # 5. Формируем сообщение
-    hashtags = generate_hashtags(selected['title'], selected['description'])
+    # 5. Формируем пост
+    today = datetime.now().strftime("%d %B %Y").replace(' 0', ' ')
     
-    message = f"""🌾 {selected['title']}
-
-{selected['description']}
-
-🔗 {selected['link']}
-
-{hashtags}"""
+    message = f"📰 АГРО ДАЙДЖЕСТ | {today}\n\n"
     
-    print(f"\n📝 Сообщение:\n{message[:200]}...")
+    for i, news in enumerate(news_batch, 1):
+        # Заголовок с номером
+        message += f"🔹 {news['title']}\n"
+        
+        # Описание (если есть)
+        if news['description']:
+            # Обрезаем до 150 символов
+            desc = news['description'][:150].strip()
+            if len(news['description']) > 150:
+                desc += "..."
+            message += f"   {desc}\n"
+        
+        # Ссылка (короткая)
+        from urllib.parse import urlparse
+        domain = urlparse(news['link']).netloc.replace('www.', '')
+        message += f"   📎 {domain}\n"
+        
+        # Пустая строка между новостями
+        message += "\n"
+    
+    # Хештеги
+    hashtags = "#агроюг #сельскоехозяйство #агробизнес #агродайджест"
+    message += f"📌 Источники: {domain}\n\n"
+    message += hashtags
+    
+    print(f"\n📝 Сообщение ({len(message)} символов):")
+    print(message[:300] + "...\n")
     
     # 6. Публикуем в VK
-    print("\n📤 Публикация в VK...")
-    success = post_to_vk(message, selected['link'])
+    print("📤 Публикация в VK...")
+    success = post_to_vk(message)
     
     if success:
-        # 7. Сохраняем в опубликованные
-        save_published(selected['link'], selected['title'])
-        print("✅ Готово!")
+        # 7. Сохраняем все опубликованные URL
+        for news in news_batch:
+            save_published(news['link'], news['title'])
+        print("✅ Дайджест опубликован!")
     else:
         print("❌ Ошибка публикации")
+
+def post_to_vk(message, link=None):
+    """Публикует пост в VK"""
+    url = 'https://api.vk.com/method/wall.post'
+    
+    params = {
+        'owner_id': f'-{VK_GROUP_ID}',
+        'message': message,
+        'access_token': VK_ACCESS_TOKEN,
+        'v': '5.199'
+    }
+    
+    response = requests.post(url, data=params)
+    result = response.json()
+    
+    if 'response' in result:
+        print(f"✅ Пост опубликован! ID: {result['response']['post_id']}")
+        return True
+    else:
+        print(f"❌ Ошибка VK API: {result}")
+        return False
 
 if __name__ == '__main__':
     main()
