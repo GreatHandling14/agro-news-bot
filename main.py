@@ -11,8 +11,8 @@ import subprocess
 # === КОНФИГУРАЦИЯ ===
 RSS_URLS = [
     'https://www.agroinvestor.ru/feed/public-agronews.xml',
-    'https://vesti365.ru/novosti-agro-rossii/',
-    'https://agri-news.ru/feed/'
+    'https://newsnovosti.ru/agro-investor-novosti/',
+    'https://newsnovosti.ru/novosti-selskoe-hozajstvo/'
     # Можно добавить ещё источники
 ]
 
