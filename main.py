@@ -130,7 +130,7 @@ def parse_all_rss():
         
     # Декодируем HTML-сущности и убираем теги
     
-    description = html.unescape(description)  # ← ДОБАВИТЬ!
+    description = html.unescape(description) 
     clean_desc = re.sub(r'<[^>]+>', '', description)[:300]
                 
                 # Парсим дату
