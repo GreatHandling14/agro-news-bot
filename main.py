@@ -128,10 +128,10 @@ def parse_all_rss():
                 description = entry.get('description', '')
                 pub_date = entry.get('published', '')
         
-    # Декодируем HTML-сущности и убираем теги
+            # Декодируем HTML-сущности и убираем теги
     
-    description = html.unescape(description) 
-    clean_desc = re.sub(r'<[^>]+>', '', description)[:300]
+                description = html.unescape(description) 
+                clean_desc = re.sub(r'<[^>]+>', '', description)[:300]
                 
                 # Парсим дату
                 try:
