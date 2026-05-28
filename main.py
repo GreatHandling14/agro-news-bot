@@ -3,6 +3,7 @@ import re
 import json
 import random
 import requests
+import html
 import feedparser
 from datetime import datetime, timedelta
 from urllib.parse import urlparse
@@ -126,6 +127,11 @@ def parse_all_rss():
                 link = entry.get('link', '').strip()
                 description = entry.get('description', '')
                 pub_date = entry.get('published', '')
+        
+    # Декодируем HTML-сущности и убираем теги
+    
+    description = html.unescape(description)  # ← ДОБАВИТЬ!
+    clean_desc = re.sub(r'<[^>]+>', '', description)[:300]
                 
                 # Парсим дату
                 try:
