@@ -128,49 +128,53 @@ def parse_all_rss():
     for rss_url in RSS_URLS:
         print(f"\n📰 Парсинг: {rss_url[:50]}...")
         
+def parse_all_rss():
+    """Парсит все RSS ленты"""
+    all_items = []
+    
+    for rss_url in RSS_URLS:
+        print(f"\n📰 Парсинг: {rss_url[:50]}...")
+        
         try:
             headers = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Accept': 'application/rss+xml, application/xml, text/xml, */*'
-}
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'application/rss+xml, application/xml, text/xml, */*'
+            }
+            
             response = requests.get(rss_url, headers=headers, timeout=15)
             feed = feedparser.parse(response.content)
             
             print(f"   Найдено: {len(feed.entries)}")
+            
+            # Показываем первые 5 новостей для отладки
+            for i, entry in enumerate(feed.entries[:5]):
+                title = entry.get('title', '')
+                pub_date = entry.get('published', '')
+                print(f"   📰 {title[:60]}... | Дата: {pub_date[:25] if pub_date else 'НЕТ'}")
             
             for entry in feed.entries:
                 title = entry.get('title', '').strip()
                 link = entry.get('link', '').strip()
                 description = entry.get('description', '')
                 pub_date = entry.get('published', '')
-        
-            # Декодируем HTML-сущности и убираем теги
-    
-                description = html.unescape(description) 
+                
+                # Декодируем HTML-сущности и убираем теги
+                description = html.unescape(description)
                 clean_desc = re.sub(r'<[^>]+>', '', description)[:300]
                 
                 # Парсим дату
-                try:
-                    if pub_date:
-                        # Пробуем распарсить дату публикации
-                        pub_datetime = datetime.strptime(
-                            pub_date[:25], 
-                            '%a, %d %b %Y %H:%M:%S'
-                        )
-                    else:
-                        pub_datetime = datetime.now()
-                except:
-                    pub_datetime = datetime.now()
+                pub_datetime = datetime.now()
+                if pub_date:
+                    try:
+                        pub_datetime = datetime.strptime(pub_date[:25], '%a, %d %b %Y %H:%M:%S')
+                    except:
+                        pass
                 
-                # Проверяем возраст (не старше MAX_AGE_DAYS)
+                # Проверяем возраст
                 age = datetime.now() - pub_datetime
                 if age.days > MAX_AGE_DAYS:
                     continue
                 
-                # Очищаем описание
-                clean_desc = re.sub(r'<[^>]+>', '', description)[:300]
-                
-                # Пропускаем пустые
                 if not title or not link:
                     continue
                 
