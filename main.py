@@ -128,13 +128,6 @@ def parse_all_rss():
     for rss_url in RSS_URLS:
         print(f"\n📰 Парсинг: {rss_url[:50]}...")
         
-def parse_all_rss():
-    """Парсит все RSS ленты"""
-    all_items = []
-    
-    for rss_url in RSS_URLS:
-        print(f"\n📰 Парсинг: {rss_url[:50]}...")
-        
         try:
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -258,12 +251,6 @@ def main():
     # 1. Парсим ВСЕ RSS
     print("\n📰 Парсинг всех источников...")
     all_items = parse_all_rss()
-    
-    for entry in feed.entries:
-        title = entry.get('title', '').strip()
-        link = entry.get('link', '').strip()
-        
-    pub_date = entry.get('published', '')
     
     # Показываем первые 5 новостей для отладки
     if len(all_items) < 5:
