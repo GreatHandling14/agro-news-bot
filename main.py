@@ -317,7 +317,7 @@ def main():
 
         # Призыв подписаться
         cta = "\n\n🔔 Подписывайтесь на нашу группу, чтобы не пропустить важные агро-новости!"
-
+        sources_str = ', '.join(sources)
         message += f"📌 Источники: {sources_str}"
         message += f"\n\n{hashtags}"
         message += f"\n{cta}"
