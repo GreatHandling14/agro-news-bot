@@ -12,7 +12,7 @@ import subprocess
 # === КОНФИГУРАЦИЯ ===
 RSS_URLS = [
     'https://www.agroinvestor.ru/feed/public-agronews.xml',
-    'https://agbz.ru/rss/',
+    'https://www.agbz.ru/rss/',
     'https://newsnovosti.ru/novosti-selskoe-hozajstvo/'
     # Можно добавить ещё источники
 ]
@@ -129,7 +129,11 @@ def parse_all_rss():
         print(f"\n📰 Парсинг: {rss_url[:50]}...")
         
         try:
-            response = requests.get(rss_url, timeout=10)
+            headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept': 'application/rss+xml, application/xml, text/xml, */*'
+}
+            response = requests.get(rss_url, headers=headers, timeout=15)
             feed = feedparser.parse(response.content)
             
             print(f"   Найдено: {len(feed.entries)}")
