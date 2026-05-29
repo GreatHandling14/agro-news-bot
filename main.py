@@ -193,10 +193,9 @@ def filter_news(items, published_urls):
     ]
     return new_items
 
-def generate_hashtags(title, description):
-    """Генерирует хештеги на основе текста"""
-    # Простые агро-хештеги
-    hashtags = ['#агроюг', '#сельскоехозяйство', '#агробизнес']
+def get_random_hashtags(count=4):
+    """Возвращает случайные хештеги из пула"""
+    return ' '.join(random.sample(HASHTAG_POOL, min(count, len(HASHTAG_POOL))))
     
     # Добавляем тематические
     text = (title + ' ' + description).lower()
