@@ -254,6 +254,20 @@ def main():
     # 1. Парсим ВСЕ RSS
     print("\n📰 Парсинг всех источников...")
     all_items = parse_all_rss()
+    for entry in feed.entries:
+    title = entry.get('title', '').strip()
+    link = entry.get('link', '').strip()
+    pub_date = entry.get('published', '')
+    
+    # Показываем первые 5 новостей для отладки
+    if len(all_items) < 5:
+        print(f"   📰 {title[:60]}...")
+        print(f"      🔗 {link[:60]}...")
+        print(f"      📅 {pub_date}")
+    
+    # ... остальной код ...
+
+
     
     if not all_items:
         print("❌ Нет новостей в RSS")
