@@ -182,9 +182,89 @@ def parse_all_rss():
         except Exception as e:
             print(f"   ❌ Ошибка: {e}")
             continue
+        # Парсим HTML сайты
+    print("\n📰 Парсим HTML сайты...")
+    html_items = parse_agroxxi_html()
+    all_items.extend(html_items)
+    
     
     print(f"\n✅ Всего новостей из всех источников: {len(all_items)}")
     return all_items
+
+def parse_agroxxi_html():
+    """Парсит новости с agroxxi.ru"""
+    url = 'https://www.agroxxi.ru/novosti-selskogo-hozjaistva.html'
+    print(f"\n📰 Парсинг HTML: {url[:50]}...")
+    
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+        
+        response = requests.get(url, headers=headers, timeout=15)
+        soup = BeautifulSoup(response.content, 'lxml')
+        
+        items = []
+        news_blocks = soup.find_all('article', class_='slavecon')
+        
+        print(f"   Найдено блоков: {len(news_blocks)}")
+        
+        for block in news_blocks[:20]:  # Берём первые 20 новостей
+            # Ссылка и заголовок
+            link_tag = block.find('a', href=True)
+            if not link_tag:
+                continue
+            
+            title_tag = block.find('h2')
+            title = title_tag.get_text(strip=True) if title_tag else link_tag.get_text(strip=True)
+            
+            link = link_tag.get('href')
+            if link and not link.startswith('http'):
+                link = 'https://www.agroxxi.ru' + link
+            
+            # Описание
+            desc_tag = block.find('div', class_='slavecon-desc')
+            description = desc_tag.get_text(strip=True)[:300] if desc_tag else ''
+            
+            # Дата (сегодня/вчера)
+            date_tag = block.find('div', class_='slavecon-pubdate')
+            date_text = date_tag.get_text(strip=True) if date_tag else ''
+            
+            # Парсим дату
+            pub_datetime = datetime.now()
+            try:
+                if 'сегодня' in date_text.lower():
+                    time_str = date_text.split('в')[1].strip() if 'в' in date_text else '00:00'
+                    pub_datetime = datetime.now().replace(
+                        hour=int(time_str.split(':')[0]),
+                        minute=int(time_str.split(':')[1].strip())
+                    )
+                elif 'вчера' in date_text.lower():
+                    time_str = date_text.split('в')[1].strip() if 'в' in date_text else '00:00'
+                    pub_datetime = (datetime.now() - timedelta(days=1)).replace(
+                        hour=int(time_str.split(':')[0]),
+                        minute=int(time_str.split(':')[1].strip())
+                    )
+            except:
+                pass
+            
+            items.append({
+                'title': title,
+                'link': link,
+                'description': description,
+                'published_at': pub_datetime,
+                'source': 'agroxxi.ru'
+            })
+        
+        print(f"   ✅ Спаршено новостей: {len(items)}")
+        return items
+        
+    except Exception as e:
+        print(f"   ❌ Ошибка парсинга: {e}")
+        import traceback
+        traceback.print_exc()
+        return []
+
 
 def filter_news(items, published_urls):
     """Фильтрует уже опубликованные новости"""
