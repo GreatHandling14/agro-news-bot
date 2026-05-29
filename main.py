@@ -206,12 +206,9 @@ def parse_agroxxi_html():
         print(f"   Status: {response.status_code}")
         print(f"   Длина ответа: {len(response.content)} байт")
         
-        # Покажем первые 500 символов для отладки
-        print(f"   Начало HTML: {response.content[:500]}")
-        
         soup = BeautifulSoup(response.content, 'lxml')
         
-        # Пробуем разные селекторы
+        # Ищем новости
         news_blocks = soup.find_all('article', class_='slavecon')
         print(f"   Найдено article.slavecon: {len(news_blocks)}")
         
@@ -220,18 +217,54 @@ def parse_agroxxi_html():
             news_blocks = soup.find_all('div', class_='slavecon')
             print(f"   Найдено div.slavecon: {len(news_blocks)}")
         
-        if len(news_blocks) == 0:
-            # Попробуем найти любые <a> с href внутри новостей
-            links = soup.find_all('a', href=lambda x: x and '/novosti' in x or '/article' in x)
-            print(f"   Найдено ссылок на новости: {len(links)}")
-            if links:
-                print(f"   Пример ссылки: {links[0].get('href')}")
-        
         items = []
         
         for block in news_blocks[:20]:
-            # ... остальной код парсинга ...
-            # (оставь как было)
+            # Ссылка и заголовок
+            link_tag = block.find('a', href=True)
+            if not link_tag:
+                continue
+            
+            title_tag = block.find('h2')
+            title = title_tag.get_text(strip=True) if title_tag else link_tag.get_text(strip=True)
+            
+            link = link_tag.get('href')
+            if link and not link.startswith('http'):
+                link = 'https://www.agroxxi.ru' + link
+            
+            # Описание
+            desc_tag = block.find('div', class_='slavecon-desc')
+            description = desc_tag.get_text(strip=True)[:300] if desc_tag else ''
+            
+            # Дата (сегодня/вчера)
+            date_tag = block.find('div', class_='slavecon-pubdate')
+            date_text = date_tag.get_text(strip=True) if date_tag else ''
+            
+            # Парсим дату
+            pub_datetime = datetime.now()
+            try:
+                if 'сегодня' in date_text.lower():
+                    time_str = date_text.split('в')[1].strip() if 'в' in date_text else '00:00'
+                    pub_datetime = datetime.now().replace(
+                        hour=int(time_str.split(':')[0]),
+                        minute=int(time_str.split(':')[1].strip())
+                    )
+                elif 'вчера' in date_text.lower():
+                    time_str = date_text.split('в')[1].strip() if 'в' in date_text else '00:00'
+                    pub_datetime = (datetime.now() - timedelta(days=1)).replace(
+                        hour=int(time_str.split(':')[0]),
+                        minute=int(time_str.split(':')[1].strip())
+                    )
+            except:
+                pass
+            
+            items.append({
+                'title': title,
+                'link': link,
+                'description': description,
+                'published_at': pub_datetime,
+                'source': 'agroxxi.ru'
+            })
         
         print(f"   ✅ Спаршено новостей: {len(items)}")
         return items
