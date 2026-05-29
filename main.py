@@ -8,11 +8,11 @@ import feedparser
 from datetime import datetime, timedelta
 from urllib.parse import urlparse
 import subprocess
+from bs4 import BeautifulSoup
 
 # === КОНФИГУРАЦИЯ ===
 RSS_URLS = [
     'https://www.agroinvestor.ru/feed/public-agronews.xml',
-    'https://www.vedomosti.ru/rss/rubric/business/agriculture.xml',
     'https://newsnovosti.ru/novosti-selskoe-hozajstvo/'
     # Можно добавить ещё источники
 ]
