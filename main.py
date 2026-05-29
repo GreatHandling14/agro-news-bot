@@ -19,7 +19,7 @@ RSS_URLS = [
 
 MIN_NEWS_FOR_POST = 1  # Минимум новостей для публикации
 MAX_NEWS_FOR_POST = 7  # Максимум в дайджесте
-MAX_AGE_DAYS = 2       # Брать новости не старше 2 дней
+MAX_AGE_DAYS = 5       # Брать новости не старше 5 дней
 
 VK_ACCESS_TOKEN = os.getenv('VK_ACCESS_TOKEN')
 VK_GROUP_ID = os.getenv('VK_GROUP_ID')
