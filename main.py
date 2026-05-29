@@ -308,12 +308,15 @@ def main():
         # Пустая строка
         message += "\n"
     
-    # Хештеги и источники
-    hashtags = "#агроюг #сельскоехозяйство #агробизнес #агродайджест"
-    sources_str = ', '.join(sources)
-    
-    message += f"📌 Источники: {sources_str}\n\n"
-    message += hashtags
+        # Случайные хештеги
+        hashtags = get_random_hashtags(4)
+
+        # Призыв подписаться
+        cta = "\n\n🔔 Подписывайтесь на нашу группу, чтобы не пропустить важные агро-новости!"
+
+        message += f"📌 Источники: {sources_str}"
+        message += f"\n\n{hashtags}"
+        message += f"\n{cta}"
     
     print(f"\n📝 Сообщение ({len(message)} символов):")
     print(message[:400] + "...\n")
