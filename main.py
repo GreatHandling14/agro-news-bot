@@ -254,9 +254,11 @@ def main():
     # 1. Парсим ВСЕ RSS
     print("\n📰 Парсинг всех источников...")
     all_items = parse_all_rss()
+    
     for entry in feed.entries:
-    title = entry.get('title', '').strip()
-    link = entry.get('link', '').strip()
+        title = entry.get('title', '').strip()
+        link = entry.get('link', '').strip()
+        
     pub_date = entry.get('published', '')
     
     # Показываем первые 5 новостей для отладки
