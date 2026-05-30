@@ -305,34 +305,36 @@ def main():
     
     sources = set()
     
-    for i, news in enumerate(news_batch, 1):
-        # Заголовок
-        message += f"🔹 {news['title']}\n"
-        
-        # Описание
-        if news['description']:
-            desc = news['description'][:150].strip()
-            if len(news['description']) > 150:
-                desc += "..."
-            message += f"   {desc}\n"
-        
-        # Источник
-        domain = news['source']
-        sources.add(domain)
-        message += f"   📎 {domain}\n"
-        
-        # Пустая строка
-        message += "\n"
+for i, news in enumerate(news_batch, 1):
+    # Заголовок
+    message += f"🔹 {news['title']}\n"
     
-        # Случайные хештеги
-        hashtags = get_random_hashtags(4)
+    # Описание
+    if news['description']:
+        desc = news['description'][:150].strip()
+        if len(news['description']) > 150:
+            desc += "..."
+        message += f"   {desc}\n"
+    
+    # Источник
+    domain = news['source']
+    sources.add(domain)
+    message += f"   📎 {domain}\n"
+    
+    # Пустая строка
+    message += "\n"
+# ← КОНЕЦ ЦИКЛА FOR!
 
-        # Призыв подписаться
-        cta = "\n\n🔔 Подписывайтесь на нашу группу, чтобы не пропустить важные агро-новости!"
-        sources_str = ', '.join(sources)
-        message += f"📌 Источники: {sources_str}"
-        message += f"\n\n{hashtags}"
-        message += f"\n{cta}"
+# ← ВНЕ ЦИКЛА (без отступа или с минимальным)!
+# Случайные хештеги
+hashtags = get_random_hashtags(4)
+
+# Призыв подписаться
+cta = "\n🔔 Подписывайтесь на нашу группу, чтобы не пропустить важные агро-новости!"
+sources_str = ', '.join(sources)
+message += f"📌 Источники: {sources_str}"
+message += f"\n\n{hashtags}"
+message += f"\n{cta}"
     
     print(f"\n📝 Сообщение ({len(message)} символов):")
     print(message[:400] + "...\n")
