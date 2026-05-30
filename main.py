@@ -324,10 +324,10 @@ for i, news in enumerate(news_batch, 1):
     # Пустая строка
 message += "\n"
 # ← ЗДЕСЬ ЗАКАНЧИВАЕТСЯ ЦИКЛ FOR!
-    
+
     # Случайные хештеги (БЕЗ отступа!)
     hashtags = get_random_hashtags(4)
-    
+
     # Призыв подписаться (БЕЗ отступа!)
     cta = "\n🔔 Подписывайтесь @yugagronews, чтобы не пропустить важные агро-новости!"
     sources_str = ', '.join(sources)
