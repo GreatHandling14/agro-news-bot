@@ -182,10 +182,10 @@ def parse_all_rss():
         except Exception as e:
             print(f"   ❌ Ошибка: {e}")
             continue
-        # Парсим HTML сайты
-    print("\n📰 Парсим HTML сайты...")
-    html_items = parse_agroxxi_html()
-    all_items.extend(html_items)
+   #     # Парсим HTML сайты
+  #  print("\n📰 Парсим HTML сайты...")
+  #  html_items = parse_agroxxi_html()
+  #  all_items.extend(html_items)
     
     
     print(f"\n✅ Всего новостей из всех источников: {len(all_items)}")
