@@ -337,15 +337,15 @@ message += f"\n{cta}"
 
 print(f"\n💬 Сообщение ({len(message)} символов):")
     
-    # 8. Публикуем в VK
-    print("📤 Публикация в VK...")
-    success = post_to_vk(message)
+# 8. Публикуем в VK
+print("📤 Публикация в VK...")
+success = post_to_vk(message)
     
-    if success:
-        # 9. Отмечаем все как опубликованные
-        print("\n💾 Сохранение опубликованных...")
-        for news in news_batch:
-            mark_as_published(news['link'], news['title'])
+if success:
+  # 9. Отмечаем все как опубликованные
+    print("\n💾 Сохранение опубликованных...")
+    for news in news_batch:
+        mark_as_published(news['link'], news['title'])
         
         print("\n✅ Дайджест опубликован!")
         print(f"   Новостей: {len(news_batch)}")
