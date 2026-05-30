@@ -298,13 +298,13 @@ def main():
     news_batch = new_items[:MAX_NEWS_FOR_POST]
     print(f"\n📋 Формируем дайджест из {len(news_batch)} новостей...")
     
-    # 7. Формируем пост
-    today = datetime.now().strftime("%d %B %Y").replace(' 0', ' ')
-    
-    message = f"📰 АГРО ДАЙДЖЕСТ | {today}\n\n"
-    
-    sources = set()
-    
+# 7. Формируем пост
+today = datetime.now().strftime("%d %B %Y").replace(' 0', ' ')
+
+message = f"📰 АГРО ДАЙДЖЕСТ | {today}\n\n"
+
+sources = set()
+
 for i, news in enumerate(news_batch, 1):
     # Заголовок
     message += f"🔹 {news['title']}\n"
@@ -322,22 +322,20 @@ for i, news in enumerate(news_batch, 1):
     message += f"   📎 {domain}\n"
     
     # Пустая строка
-    message += "\n"
-# ← КОНЕЦ ЦИКЛА FOR!
+message += "\n"
+# ← ЗДЕСЬ ЗАКАНЧИВАЕТСЯ ЦИКЛ FOR!
 
-# ← ВНЕ ЦИКЛА (без отступа или с минимальным)!
-# Случайные хештеги
+# Случайные хештеги (БЕЗ отступа!)
 hashtags = get_random_hashtags(4)
 
-# Призыв подписаться
+# Призыв подписаться (БЕЗ отступа!)
 cta = "\n🔔 Подписывайтесь на нашу группу, чтобы не пропустить важные агро-новости!"
 sources_str = ', '.join(sources)
 message += f"📌 Источники: {sources_str}"
 message += f"\n\n{hashtags}"
 message += f"\n{cta}"
-    
-    print(f"\n📝 Сообщение ({len(message)} символов):")
-    print(message[:400] + "...\n")
+
+print(f"\n💬 Сообщение ({len(message)} символов):")
     
     # 8. Публикуем в VK
     print("📤 Публикация в VK...")
