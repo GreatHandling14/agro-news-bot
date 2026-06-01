@@ -13,13 +13,12 @@ from bs4 import BeautifulSoup
 # === КОНФИГУРАЦИЯ ===
 RSS_URLS = [
     'https://www.agroinvestor.ru/feed/public-agronews.xml',
-    # Google News (оставляем как бэкап, но фильтруем по дате)
     'https://news.google.com/rss/search?q=сельское+хозяйство+Россия+АПК&hl=ru&gl=RU&ceid=RU:ru',
 ]
 
-MIN_NEWS_FOR_POST = 1  # Публиковать даже 1 новость
-MAX_NEWS_FOR_POST = 7  # Максимум в дайджесте
-MAX_AGE_DAYS = 5       # Брать новости не старше 5 дней
+MIN_NEWS_FOR_POST = 1
+MAX_NEWS_FOR_POST = 7
+MAX_AGE_DAYS = 5
 
 VK_ACCESS_TOKEN = os.getenv('VK_ACCESS_TOKEN')
 VK_GROUP_ID = os.getenv('VK_GROUP_ID')
@@ -110,6 +109,31 @@ def mark_as_published(url, title):
     save_to_repo(published)
     print(f"   ✅ Отмечено как опубликованное")
 
+def _extract_source_from_google(link, title, description):
+    """Извлекает оригинальный источник из новости Google News"""
+    # Пробуем найти "via Название" в заголовке
+    if ' via ' in title.lower():
+        parts = title.split(' via ')
+        if len(parts) > 1:
+            return parts[-1].strip()
+    
+    # Пробуем найти источник в описании (формат: "› Источник •")
+    source_match = re.search(r'›\s*([^\s•<]+(?:\s+[^\s•<]+)*)\s*[•<]', description)
+    if source_match:
+        return source_match.group(1).strip()
+    
+    # Пробуем извлечь из ссылки (ищем оригинальный домен в параметрах)
+    # Google часто добавляет &url= или похожие параметры
+    url_match = re.search(r'url=([^&]+)', link)
+    if url_match:
+        original_url = url_match.group(1)
+        domain = urlparse(original_url).netloc.replace('www.', '')
+        if domain and 'google' not in domain:
+            return domain
+    
+    # Фоллбэк: возвращаем "Google News"
+    return 'news.google.com'
+
 def parse_all_rss():
     """Парсит все RSS ленты"""
     all_items = []
@@ -119,7 +143,7 @@ def parse_all_rss():
         
         try:
             headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                 'Accept': 'application/rss+xml, application/xml, text/xml, */*'
             }
             
@@ -128,20 +152,23 @@ def parse_all_rss():
             
             print(f"   Найдено: {len(feed.entries)}")
             
-            for i, entry in enumerate(feed.entries[:5]):
-                title = entry.get('title', '')
-                pub_date = entry.get('published', '')
-                print(f"   📰 {title[:60]}... | Дата: {pub_date[:25] if pub_date else 'НЕТ'}")
-            
             for entry in feed.entries:
                 title = entry.get('title', '').strip()
                 link = entry.get('link', '').strip()
                 description = entry.get('description', '')
                 pub_date = entry.get('published', '')
                 
+                # Очищаем описание
                 description = html.unescape(description)
                 clean_desc = re.sub(r'<[^>]+>', '', description)[:300]
                 
+                # Определяем источник
+                if 'news.google.com' in link:
+                    source_name = _extract_source_from_google(link, title, description)
+                else:
+                    source_name = urlparse(link).netloc.replace('www.', '')
+                
+                # Парсим дату
                 pub_datetime = datetime.now()
                 if pub_date:
                     try:
@@ -149,6 +176,7 @@ def parse_all_rss():
                     except:
                         pass
                 
+                # Проверяем возраст
                 age = datetime.now() - pub_datetime
                 if age.days > MAX_AGE_DAYS:
                     continue
@@ -161,7 +189,7 @@ def parse_all_rss():
                     'link': link,
                     'description': clean_desc,
                     'published_at': pub_datetime,
-                    'source': urlparse(link).netloc.replace('www.', '')
+                    'source': source_name
                 })
         
         except Exception as e:
@@ -185,13 +213,11 @@ def parse_dairynews_kz():
         soup = BeautifulSoup(response.content, 'lxml')
         
         items = []
-        # Ищем блоки новостей
         news_blocks = soup.find_all('div', class_='row no-gutters')
         
         print(f"   Найдено блоков: {len(news_blocks)}")
         
         for block in news_blocks:
-            # Ссылка и заголовок
             link_tag = block.find('h3', class_='title')
             if not link_tag:
                 link_tag = block.find('a', href=True)
@@ -202,19 +228,14 @@ def parse_dairynews_kz():
             title = link_tag.get_text(strip=True)
             link = link_tag.get('href')
             
-            # Если ссылка относительная — делаем абсолютной
             if link and link.startswith('/'):
                 link = 'https://dairynews.today' + link
-            elif link and link.startswith('http'):
-                pass  # Уже абсолютная
-            else:
-                continue  # Нет ссылки
+            elif not link or not link.startswith('http'):
+                continue
             
-            # Дата
             date_span = block.find('span', class_='data')
             date_text = date_span.get_text(strip=True) if date_span else ''
             
-            # Парсим дату (формат: 01.06.2026)
             pub_datetime = datetime.now()
             if date_text:
                 try:
@@ -222,7 +243,6 @@ def parse_dairynews_kz():
                 except:
                     pass
             
-            # Описание
             desc_tag = block.find('div', class_='infotitle')
             description = desc_tag.get_text(strip=True)[:300] if desc_tag else ''
             
@@ -242,9 +262,13 @@ def parse_dairynews_kz():
         print(f"   ❌ Ошибка парсинга DairyNews: {e}")
         return []
 
+def _normalize_title(title):
+    """Нормализует заголовок для сравнения (убирает спецсимволы, приводит к lower)"""
+    return re.sub(r'[^\w\sа-яА-ЯёЁ]', '', title).lower().strip()
+
 def filter_news(items, published_urls):
-    """Фильтрует дубликаты + группирует по источникам"""
-    seen_titles = set()  # Для проверки дублей по заголовку
+    """Фильтрует дубликаты по URL и по нормализованному заголовку"""
+    seen_titles = set()
     new_items = []
     
     for item in items:
@@ -252,13 +276,13 @@ def filter_news(items, published_urls):
         if item['link'] in published_urls:
             continue
         
-        # Пропускаем если заголовок похож (очистка от спецсимволов)
-        title_normalized = re.sub(r'[^\w\sа-яА-Я]', '', item['title']).lower().strip()
-        if title_normalized in seen_titles:
+        # Пропускаем если заголовок уже встречался
+        title_norm = _normalize_title(item['title'])
+        if title_norm in seen_titles:
             print(f"   ⚠️ Дубль заголовка: {item['title'][:50]}...")
             continue
         
-        seen_titles.add(title_normalized)
+        seen_titles.add(title_norm)
         new_items.append(item)
     
     return new_items
@@ -317,20 +341,20 @@ def main():
     new_items = filter_news(all_items, published_urls)
     print(f"   Новых новостей: {len(new_items)}")
     
-    # 4. ОГРАНИЧЕНИЕ GOOGLE NEWS (максимум 2 новости)
+    # 4. ОГРАНИЧЕНИЕ GOOGLE NEWS (максимум 1 новость!)
     print("\n📊 Распределение источников...")
-    google_items = [item for item in new_items if 'news.google.com' in item['link']]
-    other_items = [item for item in new_items if 'news.google.com' not in item['link']]
+    google_items = [item for item in new_items if 'news.google.com' in item['link'].lower() or item['source'] == 'news.google.com']
+    other_items = [item for item in new_items if item not in google_items]
     
     print(f"   Google News: {len(google_items)}")
     print(f"   Другие источники: {len(other_items)}")
     
-    # Оставляем максимум 2 из Google + все остальные
-    if len(google_items) > 2:
-        google_items = google_items[:2]
-        print(f"   ⚠️ Google News ограничен до 2 новостей")
+    # Оставляем ТОЛЬКО 1 из Google (или 0 если мало других)
+    if len(google_items) > 1:
+        google_items = google_items[:1]
+        print(f"   ⚠️ Google News ограничен до 1 новости")
     
-    # Объединяем: сначала не-Google, потом Google
+    # Сначала не-Google, потом Google (если есть)
     filtered_items = other_items + google_items
     
     # 5. Проверяем минимум
@@ -339,19 +363,14 @@ def main():
         print("   Ждём следующего запуска...")
         return
     
-    # 6. Проверяем РАЗНООБРАЗИЕ источников
-    sources_in_batch = set(item['source'] for item in filtered_items[:MAX_NEWS_FOR_POST])
-    if len(sources_in_batch) < 2 and len(filtered_items) >= 2:
-        print(f"   ⚠️ Мало источников ({len(sources_in_batch)}), пробуем найти ещё...")
-    
-    # 7. Сортируем по дате (сначала новые)
+    # 6. Сортируем по дате (сначала новые)
     filtered_items.sort(key=lambda x: x['published_at'], reverse=True)
     
-    # 8. Берем новости для дайджеста
+    # 7. Берем новости для дайджеста
     news_batch = filtered_items[:MAX_NEWS_FOR_POST]
     print(f"\n📋 Формируем дайджест из {len(news_batch)} новостей...")
     
-    # 9. Формируем пост
+    # 8. Формируем пост
     today = datetime.now().strftime("%d %B %Y").replace(' 0', ' ')
     message = f"📰 АГРО ДАЙДЖЕСТ | {today}\n\n"
     sources = set()
@@ -360,12 +379,17 @@ def main():
         # Заголовок
         message += f"🔹 {news['title']}\n"
         
-        # Описание
+        # Описание — ТОЛЬКО если оно отличается от заголовка!
         if news['description']:
             desc = news['description'][:150].strip()
-            if len(news['description']) > 150:
-                desc += "..."
-            message += f"   {desc}\n"
+            title_clean = _normalize_title(news['title'])
+            desc_clean = _normalize_title(desc)
+            
+            # Добавляем описание только если оно НЕ дублирует заголовок
+            if desc_clean and desc_clean != title_clean and title_clean not in desc_clean:
+                if len(news['description']) > 150:
+                    desc += "..."
+                message += f"   {desc}\n"
         
         # Источник
         domain = news['source']
@@ -386,12 +410,12 @@ def main():
     
     print(f"\n💬 Сообщение ({len(message)} символов):")
     
-    # 10. Публикуем в VK
+    # 9. Публикуем в VK
     print("\n📤 Публикация в VK...")
     success = post_to_vk(message)
     
     if success:
-        # 11. Отмечаем как опубликованные
+        # 10. Отмечаем как опубликованные
         print("\n💾 Сохранение опубликованных...")
         for news in news_batch:
             mark_as_published(news['link'], news['title'])
