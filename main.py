@@ -14,7 +14,6 @@ from itertools import zip_longest
 # === КОНФИГУРАЦИЯ ===
 RSS_URLS = [
     'https://www.agroinvestor.ru/feed/public-agronews.xml',
-    # Google News - сельское хозяйство России
     'https://news.google.com/rss/search?q=сельское+хозяйство+Россия+АПК&hl=ru&gl=RU&ceid=RU:ru',
 ]
 
@@ -41,34 +40,34 @@ HASHTAG_POOL = [
 # === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===
 
 def _clean_title(title):
-    """РАДИКАЛЬНО удаляет ВСЕ даты и мусор из заголовка"""
+    """Ультра-агрессивно удаляет ВСЁ лишнее из заголовка"""
     # 1. Убираем переносы строк
     title = title.replace('\n', ' ').replace('\r', ' ')
     
-    # 2. Убираем ВСЕ даты в любом формате (агрессивно)
-    # Форматы: 01.06.2026, 01-06-2026, 01.06.26, 1.6.2026
+    # 2. Убираем ВСЕ даты в любом формате (ОЧЕНЬ агрессивно)
+    # Сначала ищем "Слово+Дата" без пробела (Мир01.06.2026)
+    title = re.sub(r'([А-Яа-яЁё]+)(\d{1,2}[.\-]\d{1,2}[.\-]\d{2,4})', r'\1', title)
+    
+    # Потом убираем сами даты
     title = re.sub(r'\s*\d{1,2}[.\-]\d{1,2}[.\-]\d{2,4}\s*', ' ', title)
     
-    # 3. Убираем слова-регионы + даты слитно (Мир01.06.2026, Казахстан01.06.2026)
-    title = re.sub(r'(Мир|Казахстан|Россия|Беларусь|Украина)\s*\d{1,2}[.\-]\d{1,2}[.\-]\d{2,4}', '', title, flags=re.IGNORECASE)
-    
-    # 4. Убираем слова-регионы в начале
+    # 3. Убираем слова-регионы в начале
     title = re.sub(r'^(Мир|Казахстан|Россия|Беларусь|Украина)\s*', '', title, flags=re.IGNORECASE)
     
-    # 5. Убираем "via ..." (от Google News)
+    # 4. Убираем "via ..." (от Google)
     title = re.sub(r'\s*via\s+\S+', '', title, flags=re.IGNORECASE)
     
-    # 6. Убираем "Новости" в конце
+    # 5. Убираем "Новости" в конце
     title = re.sub(r'\s*Новости\s*$', '', title, flags=re.IGNORECASE)
     
-    # 7. Убираем лишние пробелы
+    # 6. Убираем лишние пробелы
     title = ' '.join(title.split())
     
-    # 8. Убираем точку в конце
+    # 7. Убираем точку в конце
     if title.endswith('.'):
         title = title[:-1]
     
-    # 9. Если заголовок слишком короткий - возвращаем пустую строку
+    # 8. Если заголовок слишком короткий - возвращаем пустую строку
     if len(title) < 10:
         return ''
     
@@ -76,17 +75,14 @@ def _clean_title(title):
 
 def _extract_source_from_google(entry):
     """Извлекает оригинальный источник из Google News"""
-    # Пробуем найти источник в теге source
     if hasattr(entry, 'source') and entry.source:
         if hasattr(entry.source, 'title'):
             return entry.source.title.strip()
     
-    # Пробуем извлечь из ссылки
     link = entry.get('link', '')
     if 'news.google.com' in link:
         return 'news.google.com'
     
-    # Дефолт
     return urlparse(link).netloc.replace('www.', '')
 
 def _mix_sources(items, max_count):
@@ -110,9 +106,7 @@ def _mix_sources(items, max_count):
     mixed = []
     source_names = list(by_source.keys())
     
-    # Максимум итераций = max_count
     for i in range(max_count):
-        # Берём по одной новости из каждого источника по очереди
         for src in source_names:
             if len(mixed) >= max_count:
                 break
@@ -122,7 +116,6 @@ def _mix_sources(items, max_count):
         if len(mixed) >= max_count:
             break
     
-    # Показываем что получилось
     sources_in_mix = set(item['source'] for item in mixed)
     print(f"   ✅ В дайджесте: {len(mixed)} новостей из {len(sources_in_mix)} источников")
     for src in sources_in_mix:
@@ -228,7 +221,6 @@ def parse_all_rss():
                 # РАДИКАЛЬНАЯ ОЧИСТКА ЗАГОЛОВКА
                 title = _clean_title(title)
                 
-                # Если заголовок пустой после очистки - пропускаем
                 if not title:
                     continue
                 
@@ -236,17 +228,14 @@ def parse_all_rss():
                 description = entry.get('description', '')
                 pub_date = entry.get('published', '')
                 
-                # Очищаем описание
                 description = html.unescape(description)
                 clean_desc = re.sub(r'<[^>]+>', '', description)[:300]
                 
-                # Определяем источник
                 if 'news.google.com' in link:
                     source_name = _extract_source_from_google(entry)
                 else:
                     source_name = urlparse(link).netloc.replace('www.', '')
                 
-                # Парсим дату
                 pub_datetime = datetime.now()
                 if pub_date:
                     try:
@@ -254,7 +243,6 @@ def parse_all_rss():
                     except:
                         pass
                 
-                # Проверяем возраст
                 age = datetime.now() - pub_datetime
                 if age.days > MAX_AGE_DAYS:
                     continue
@@ -293,11 +281,9 @@ def parse_dairynews_kz():
         items = []
         news_blocks = []
         
-        # Ищем блоки новостей
         blocks1 = soup.find_all('div', class_='row no-guttersss')
         news_blocks.extend(blocks1)
         
-        # Альтернативный поиск
         h3_tags = soup.find_all('h3', class_='title')
         for h3 in h3_tags:
             parent = h3.find_parent('div', class_=lambda x: x and 'col-' in x)
@@ -307,29 +293,29 @@ def parse_dairynews_kz():
         print(f"   Найдено блоков: {len(news_blocks)}")
         
         for block in news_blocks:
-            # Ищем заголовок ТОЛЬКО в h3.title
             title_tag = block.find('h3', class_='title')
             
             if not title_tag:
                 continue
             
-            # Ищем ссылку ВНУТРИ h3
             link_tag = title_tag.find('a', href=True)
             
             if not link_tag:
                 continue
             
-            # Берём текст ТОЛЬКО из ссылки (не весь h3!)
+            # ВАЖНО: Берём текст ТОЛЬКО из <a>, НЕ весь h3!
             title = link_tag.get_text(strip=True)
             
-            # РАДИКАЛЬНАЯ ОЧИСТКА
-            title = _clean_title(title)
+            # Убираем ВСЕ цифры и точки из конца заголовка (даты)
+            title = re.sub(r'\s*\d{1,2}[.\-]\d{1,2}[.\-]\d{2,4}\s*$', '', title)
+            title = re.sub(r'(Мир|Казахстан|Россия)\s*\d{1,2}[.\-]\d{1,2}[.\-]\d{2,4}', '', title)
             
-            # Если заголовок пустой - пропускаем
-            if not title:
+            # Чистим пробелы
+            title = ' '.join(title.split())
+            
+            if not title or len(title) < 10:
                 continue
             
-            # Получаем ссылку
             link = link_tag.get('href')
             
             if link and link.startswith('/'):
@@ -340,12 +326,10 @@ def parse_dairynews_kz():
             # Ищем дату ОТДЕЛЬНО (НЕ в заголовке!)
             date_text = ''
             
-            # Ищем в span class="data"
             date_span = block.find('span', class_='data')
             if date_span:
                 date_text = date_span.get_text(strip=True)
             
-            # Если не нашли - ищем рядом с локацией
             if not date_text:
                 location_div = block.find('div', class_=lambda x: x and 'location' in x)
                 if location_div:
@@ -355,7 +339,6 @@ def parse_dairynews_kz():
                         if date_match:
                             date_text = date_match.group(1)
             
-            # Если всё ещё не нашли - ищем по блоку (НО НЕ в h3!)
             if not date_text:
                 block_text_no_title = ''
                 for elem in block.find_all(string=True):
@@ -366,7 +349,6 @@ def parse_dairynews_kz():
                 if date_match:
                     date_text = date_match.group(1)
             
-            # Парсим дату
             pub_datetime = datetime.now()
             if date_text:
                 try:
@@ -374,7 +356,6 @@ def parse_dairynews_kz():
                 except:
                     pass
             
-            # Ищем описание
             desc_div = block.find('div', class_='infotitle')
             description = desc_div.get_text(strip=True)[:300] if desc_div else ''
             
@@ -441,8 +422,8 @@ def main():
     
     # 1. Парсим ВСЕ источники
     print("\n📰 Парсинг всех источников...")
-    rss_items = parse_all_rss()  # Agroinvestor + Google News
-    dairy_items = parse_dairynews_kz()  # DairyNews
+    rss_items = parse_all_rss()
+    dairy_items = parse_dairynews_kz()
     all_items = rss_items + dairy_items
     
     print(f"\n✅ ВСЕГО новостей: {len(all_items)}")
@@ -481,17 +462,33 @@ def main():
     sources = set()
     
     for i, news in enumerate(news_batch, 1):
-        # Заголовок (уже очищен от дат)
+        # Заголовок
         message += f"🔹 {news['title']}\n"
         
-        # Описание - до 250 символов
+        # Описание - ТОЛЬКО если оно СУЩЕСТВЕННО отличается от заголовка
         if news['description']:
             desc = news['description'][:250].strip()
             title_lower = news['title'].lower().strip()
             desc_lower = desc.lower().strip()
             
-            # Добавляем описание только если отличается
-            if desc_lower and title_lower not in desc_lower and desc_lower not in title_lower:
+            # НЕ добавляем описание если:
+            # 1. Оно пустое
+            # 2. Оно совпадает с заголовком
+            # 3. Заголовок содержится в описании (или наоборот)
+            # 4. Они похожи (первые 50 символов совпадают)
+            should_skip = False
+            
+            if not desc_lower:
+                should_skip = True
+            elif title_lower == desc_lower:
+                should_skip = True
+            elif title_lower in desc_lower or desc_lower in title_lower:
+                should_skip = True
+            elif len(title_lower) > 20 and len(desc_lower) > 20:
+                if title_lower[:50] == desc_lower[:50]:
+                    should_skip = True
+            
+            if not should_skip:
                 if len(news['description']) > 250:
                     desc += "..."
                 message += f"{desc}\n"
