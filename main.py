@@ -69,6 +69,7 @@ def _mix_sources(items, max_count):
     if not items:
         return []
     
+    # Группируем по источникам
     by_source = {}
     for item in items:
         src = item['source']
@@ -76,15 +77,29 @@ def _mix_sources(items, max_count):
             by_source[src] = []
         by_source[src].append(item)
     
+    print(f"   📊 Источников найдено: {len(by_source)}")
+    for src, src_items in by_source.items():
+        print(f"      {src}: {len(src_items)} новостей")
+    
+    # Чередуем источники
     mixed = []
-    # Чередуем источники по очереди
-    for chunk in zip_longest(*by_source.values(), fillvalue=None):
-        for item in chunk:
-            if item is not None and len(mixed) < max_count:
-                mixed.append(item)
+    max_per_source = (max_count // len(by_source)) + 1  # Максимум с каждого источника
+    
+    # Берём по очереди из каждого источника
+    for i in range(max_per_source):
+        for src, src_items in by_source.items():
+            if len(mixed) >= max_count:
+                break
+            if i < len(src_items):
+                mixed.append(src_items[i])
+        
         if len(mixed) >= max_count:
             break
-            
+    
+    print(f"   ✅ Сформировано новостей: {len(mixed)}")
+    sources_in_mix = set(item['source'] for item in mixed)
+    print(f"   📰 Источников в дайджесте: {len(sources_in_mix)} - {', '.join(sources_in_mix)}")
+    
     return mixed
 
 # === ОСНОВНЫЕ ФУНКЦИИ ===
