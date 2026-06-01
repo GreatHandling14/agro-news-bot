@@ -40,16 +40,17 @@ HASHTAG_POOL = [
 
 def _clean_title(title):
     """Агрессивно убирает даты, регионы и мусор из заголовка"""
-    # 1. Убираем переносы строк (часто дата на новой строке)
+    # 1. Убираем переносы строк
     title = title.replace('\n', ' ').replace('\r', ' ')
     
-    # 2. Убираем даты в формате "01.06.2026" или "01-06-2026" (в любом месте)
-    title = re.sub(r'\s*\d{1,2}[.\-]\d{1,2}[.\-]\d{2,4}\s*', ' ', title)
-    
-    # 3. Убираем слова-регионы перед датами: "Мир01.06.2026" → ""
+    # 2. Убираем специфичные связки "Регион+Дата" (например "Мир01.06.2026")
+    # Ищем слова Мир/Казахстан/Россия и сразу следующую за ними дату
     title = re.sub(r'(Мир|Казахстан|Россия|Беларусь|Украина)\s*\d{1,2}[.\-]\d{1,2}[.\-]\d{2,4}', '', title, flags=re.IGNORECASE)
     
-    # 4. Убираем слова-регионы в начале (если остались)
+    # 3. Убираем любые даты в формате 01.01.2026 в любом месте
+    title = re.sub(r'\s*\d{1,2}[.\-]\d{1,2}[.\-]\d{2,4}\s*', ' ', title)
+    
+    # 4. Убираем слова-регионы в начале (если остались без даты)
     title = re.sub(r'^(Мир|Казахстан|Россия|Беларусь|Украина)\s*', '', title, flags=re.IGNORECASE)
     
     # 5. Убираем "Новости" в конце
@@ -77,13 +78,9 @@ def _mix_sources(items, max_count):
             by_source[src] = []
         by_source[src].append(item)
     
-    print(f"   📊 Источников найдено: {len(by_source)}")
-    for src, src_items in by_source.items():
-        print(f"      {src}: {len(src_items)} новостей")
-    
     # Чередуем источники
     mixed = []
-    max_per_source = (max_count // len(by_source)) + 1  # Максимум с каждого источника
+    max_per_source = (max_count // len(by_source)) + 1
     
     # Берём по очереди из каждого источника
     for i in range(max_per_source):
@@ -95,10 +92,6 @@ def _mix_sources(items, max_count):
         
         if len(mixed) >= max_count:
             break
-    
-    print(f"   ✅ Сформировано новостей: {len(mixed)}")
-    sources_in_mix = set(item['source'] for item in mixed)
-    print(f"   📰 Источников в дайджесте: {len(sources_in_mix)} - {', '.join(sources_in_mix)}")
     
     return mixed
 
@@ -125,7 +118,7 @@ def load_published():
             print("   📭 Файл не найден (первый запуск)")
             return []
     except Exception as e:
-        print(f"   ⚠️ Ошибка загрузки: {e}")
+        print(f"   ️ Ошибка загрузки: {e}")
         return []
 
 def save_to_repo(published):
@@ -155,7 +148,7 @@ def save_to_repo(published):
         print("   ✅ Сохранено в репозиторий")
         
     except Exception as e:
-        print(f"   ⚠️ Ошибка сохранения: {e}")
+        print(f"   ️ Ошибка сохранения: {e}")
 
 def mark_as_published(url, title):
     """Добавляет URL в список опубликованных"""
@@ -238,7 +231,7 @@ def parse_all_rss():
 def parse_dairynews_kz():
     """Парсит новости dairynews.today/kz/ (HTML парсинг)"""
     url = 'https://dairynews.today/kz/'
-    print(f"\n📰 Парсинг HTML: {url}")
+    print(f"\n Парсинг HTML: {url}")
     
     try:
         headers = {
@@ -277,7 +270,7 @@ def parse_dairynews_kz():
             if not link_tag:
                 continue
             
-            # Берём текст ТОЛЬКО из ссылки внутри h3 (не весь блок!)
+            # Берём текст ТОЛЬКО из ссылки внутри h3
             title = link_tag.get_text(strip=True)
             
             # ЧИСТИМ ЗАГОЛОВОК АГРЕССИВНО
@@ -315,7 +308,6 @@ def parse_dairynews_kz():
             
             # Если всё ещё не нашли — ищем по всему блоку (но НЕ в h3!)
             if not date_text:
-                # Берём текст блока БЕЗ h3
                 block_text_no_title = ''
                 for elem in block.find_all(string=True):
                     if elem.parent.name != 'h3':
@@ -351,8 +343,6 @@ def parse_dairynews_kz():
         
     except Exception as e:
         print(f"   ❌ Ошибка парсинга DairyNews: {e}")
-        import traceback
-        traceback.print_exc()
         return []
 
 def filter_news(items, published_urls):
@@ -419,13 +409,13 @@ def main():
     print(f"   Опубликовано: {len(published_urls)}")
     
     # 3. Фильтруем дубликаты
-    print("\n🔍 Фильтрация дубликатов...")
+    print("\n Фильтрация дубликатов...")
     new_items = filter_news(all_items, published_urls)
     print(f"   Новых новостей: {len(new_items)}")
     
     # 4. Проверяем минимум
     if len(new_items) < MIN_NEWS_FOR_POST:
-        print(f"\n⏸️  Мало новостей ({len(new_items)} < {MIN_NEWS_FOR_POST})")
+        print(f"\n️  Мало новостей ({len(new_items)} < {MIN_NEWS_FOR_POST})")
         print("   Ждём следующего запуска...")
         return
     
@@ -434,15 +424,15 @@ def main():
     
     # 6. ЧЕРЕДУЕМ ИСТОЧНИКИ (чтобы DairyNews точно попал в пост)
     news_batch = _mix_sources(new_items, MAX_NEWS_FOR_POST)
-    print(f"\n📋 Формируем дайджест из {len(news_batch)} новостей...")
+    print(f"\n Формируем дайджест из {len(news_batch)} новостей...")
     
     # 7. Формируем пост
     today = datetime.now().strftime("%d %B %Y").replace(' 0', ' ')
-    message = f"📰 АГРО ДАЙДЖЕСТ | {today}\n\n"
+    message = f" АГРО ДАЙДЖЕСТ | {today}\n\n"
     sources = set()
     
     for i, news in enumerate(news_batch, 1):
-        # Заголовок (чистый текст без дат)
+        # Заголовок
         message += f"🔹 {news['title']}\n"
         
         # Описание — до 250 символов
@@ -457,16 +447,13 @@ def main():
                     desc += "..."
                 message += f"{desc}\n"
         
-        # Пустая строка перед источником
-        message += "\n"
-        
         # Источник (ОДИН РАЗ!)
         domain = news['source']
         sources.add(domain)
         message += f"📎 {domain}\n"
         
-        # Разделитель между новостями
-        message += "\n" + "─" * 20 + "\n\n"
+        # Просто пустая строка для разделения (без линий)
+        message += "\n"
     
     # === Хештеги и CTA — ОДИН РАЗ В КОНЦЕ ===
     hashtags = get_random_hashtags(4)
