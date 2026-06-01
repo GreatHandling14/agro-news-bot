@@ -243,8 +243,25 @@ def parse_dairynews_kz():
         return []
 
 def filter_news(items, published_urls):
-    """Фильтрует уже опубликованные новости"""
-    return [item for item in items if item['link'] not in published_urls]
+    """Фильтрует дубликаты + группирует по источникам"""
+    seen_titles = set()  # Для проверки дублей по заголовку
+    new_items = []
+    
+    for item in items:
+        # Пропускаем если URL уже опубликован
+        if item['link'] in published_urls:
+            continue
+        
+        # Пропускаем если заголовок похож (очистка от спецсимволов)
+        title_normalized = re.sub(r'[^\w\sа-яА-Я]', '', item['title']).lower().strip()
+        if title_normalized in seen_titles:
+            print(f"   ⚠️ Дубль заголовка: {item['title'][:50]}...")
+            continue
+        
+        seen_titles.add(title_normalized)
+        new_items.append(item)
+    
+    return new_items
 
 def get_random_hashtags(count=4):
     """Возвращает случайные хештеги из пула"""
@@ -277,45 +294,64 @@ def main():
     print(f"📋 Максимум новостей: {MAX_NEWS_FOR_POST}")
     print(f"📋 Возраст новостей: до {MAX_AGE_DAYS} дней")
     
-    # 1. Парсим ВСЕ RSS
+    # 1. Парсим ВСЕ источники
     print("\n📰 Парсинг всех источников...")
-    all_items = parse_all_rss()
-    
-    # 2. Парсим DairyNews (HTML)
+    rss_items = parse_all_rss()
     dairy_items = parse_dairynews_kz()
-    all_items.extend(dairy_items)
+    all_items = rss_items + dairy_items
     
-    print(f"\n✅ ВСЕГО новостей из всех источников: {len(all_items)}")
+    print(f"\n✅ ВСЕГО новостей: {len(all_items)}")
     
     if not all_items:
         print("❌ Нет новостей")
         return
     
-    # 3. Загружаем опубликованные
+    # 2. Загружаем опубликованные
     print("\n📋 Загрузка опубликованных...")
     published = load_published()
     published_urls = [p['url'] for p in published]
     print(f"   Опубликовано: {len(published_urls)}")
     
-    # 4. Фильтруем дубликаты
+    # 3. Фильтруем дубликаты
     print("\n🔍 Фильтрация дубликатов...")
-    new_items = [item for item in all_items if item['link'] not in published_urls]
+    new_items = filter_news(all_items, published_urls)
     print(f"   Новых новостей: {len(new_items)}")
     
+    # 4. ОГРАНИЧЕНИЕ GOOGLE NEWS (максимум 2 новости)
+    print("\n📊 Распределение источников...")
+    google_items = [item for item in new_items if 'news.google.com' in item['link']]
+    other_items = [item for item in new_items if 'news.google.com' not in item['link']]
+    
+    print(f"   Google News: {len(google_items)}")
+    print(f"   Другие источники: {len(other_items)}")
+    
+    # Оставляем максимум 2 из Google + все остальные
+    if len(google_items) > 2:
+        google_items = google_items[:2]
+        print(f"   ⚠️ Google News ограничен до 2 новостей")
+    
+    # Объединяем: сначала не-Google, потом Google
+    filtered_items = other_items + google_items
+    
     # 5. Проверяем минимум
-    if len(new_items) < MIN_NEWS_FOR_POST:
-        print(f"\n⏸️  Мало новостей ({len(new_items)} < {MIN_NEWS_FOR_POST})")
+    if len(filtered_items) < MIN_NEWS_FOR_POST:
+        print(f"\n⏸️  Мало новостей ({len(filtered_items)} < {MIN_NEWS_FOR_POST})")
         print("   Ждём следующего запуска...")
         return
     
-    # 6. Сортируем по дате (сначала новые)
-    new_items.sort(key=lambda x: x['published_at'], reverse=True)
+    # 6. Проверяем РАЗНООБРАЗИЕ источников
+    sources_in_batch = set(item['source'] for item in filtered_items[:MAX_NEWS_FOR_POST])
+    if len(sources_in_batch) < 2 and len(filtered_items) >= 2:
+        print(f"   ⚠️ Мало источников ({len(sources_in_batch)}), пробуем найти ещё...")
     
-    # 7. Берем новости для дайджеста
-    news_batch = new_items[:MAX_NEWS_FOR_POST]
+    # 7. Сортируем по дате (сначала новые)
+    filtered_items.sort(key=lambda x: x['published_at'], reverse=True)
+    
+    # 8. Берем новости для дайджеста
+    news_batch = filtered_items[:MAX_NEWS_FOR_POST]
     print(f"\n📋 Формируем дайджест из {len(news_batch)} новостей...")
     
-    # 8. Формируем пост
+    # 9. Формируем пост
     today = datetime.now().strftime("%d %B %Y").replace(' 0', ' ')
     message = f"📰 АГРО ДАЙДЖЕСТ | {today}\n\n"
     sources = set()
@@ -350,12 +386,12 @@ def main():
     
     print(f"\n💬 Сообщение ({len(message)} символов):")
     
-    # 9. Публикуем в VK
+    # 10. Публикуем в VK
     print("\n📤 Публикация в VK...")
     success = post_to_vk(message)
     
     if success:
-        # 10. Отмечаем как опубликованные
+        # 11. Отмечаем как опубликованные
         print("\n💾 Сохранение опубликованных...")
         for news in news_batch:
             mark_as_published(news['link'], news['title'])
@@ -363,6 +399,7 @@ def main():
         print("\n✅ Дайджест опубликован!")
         print(f"   Новостей: {len(news_batch)}")
         print(f"   Источников: {len(sources)}")
+        print(f"   Источники: {', '.join(sources)}")
     else:
         print("\n❌ Ошибка публикации")
 
