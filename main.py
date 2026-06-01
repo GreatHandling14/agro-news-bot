@@ -13,12 +13,11 @@ from bs4 import BeautifulSoup
 # === КОНФИГУРАЦИЯ ===
 RSS_URLS = [
     'https://www.agroinvestor.ru/feed/public-agronews.xml',
-    # Google News УБРАН — только дублирует и портит посты
 ]
 
 MIN_NEWS_FOR_POST = 1
 MAX_NEWS_FOR_POST = 7
-MAX_AGE_DAYS = 14       # УВЕЛИЧИЛ до 2 недель (было 5 дней)
+MAX_AGE_DAYS = 14       # 2 недели
 
 VK_ACCESS_TOKEN = os.getenv('VK_ACCESS_TOKEN')
 VK_GROUP_ID = os.getenv('VK_GROUP_ID')
@@ -40,13 +39,13 @@ HASHTAG_POOL = [
 
 def _clean_title(title):
     """Убирает даты и лишнюю информацию из заголовка"""
-    # Убираем даты в формате "01.06.2026"
+    # Убираем даты в конце: "Мир01.06.2026" или "Казахстан 01.06.2026"
+    title = re.sub(r'[А-Яа-яЁё]*\s*\d{1,2}[.\-]\d{1,2}[.\-]\d{2,4}\s*$', '', title)
+    
+    # Убираем даты в любом месте
     title = re.sub(r'\s*\d{1,2}[.\-]\d{1,2}[.\-]\d{2,4}\s*', ' ', title)
     
-    # Убираем даты в формате "01 июня 2026"
-    title = re.sub(r'\s*\d{1,2}\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)\s+\d{4}\s*', ' ', title, flags=re.IGNORECASE)
-    
-    # Убираем слова "Казахстан", "Россия", "Мир" в начале (это регионы)
+    # Убираем слова-регионы в начале
     title = re.sub(r'^(Казахстан|Россия|Мир|Беларусь)\s*', '', title, flags=re.IGNORECASE)
     
     # Убираем лишние пробелы
@@ -147,7 +146,6 @@ def parse_all_rss():
             
             for entry in feed.entries:
                 title = entry.get('title', '').strip()
-                # Очищаем заголовок от дат
                 title = _clean_title(title)
                 
                 link = entry.get('link', '').strip()
@@ -202,30 +200,41 @@ def parse_dairynews_kz():
         soup = BeautifulSoup(response.content, 'lxml')
         
         items = []
+        news_blocks = []
         
-        # Ищем ВСЕ блоки с новостями (несколько классов)
-        news_blocks = soup.find_all('div', class_='row no-guttersss')
+        # Способ 1: по классу row no-guttersss
+        blocks1 = soup.find_all('div', class_='row no-guttersss')
+        news_blocks.extend(blocks1)
         
-        # Если не нашли — пробуем альтернативные селекторы
-        if len(news_blocks) == 0:
-            news_blocks = soup.find_all('div', class_='row')
+        # Способ 2: ищем все h3 с классом title и берём их родителей
+        h3_tags = soup.find_all('h3', class_='title')
+        for h3 in h3_tags:
+            parent = h3.find_parent('div', class_=lambda x: x and 'col-' in x)
+            if parent and parent not in news_blocks:
+                news_blocks.append(parent)
         
         print(f"   Найдено блоков: {len(news_blocks)}")
         
         for block in news_blocks:
             # Ищем заголовок
-            title_tag = block.find('h3', class_='title')
+            if block.name == 'h3' and 'title' in block.get('class', []):
+                title_tag = block
+            else:
+                title_tag = block.find('h3', class_='title')
             
             if not title_tag:
                 continue
             
-            # Ищем ссылку внутри заголовка
-            link_tag = title_tag.find('a', href=True)
+            # Ищем ссылку
+            link_tag = title_tag.find('a', href=True) if title_tag.name != 'a' else title_tag
+            
+            if not link_tag:
+                link_tag = block.find('a', href=True)
             
             if not link_tag:
                 continue
             
-            # Получаем заголовок (только текст из h3, без даты)
+            # Получаем заголовок
             title = link_tag.get_text(strip=True)
             title = _clean_title(title)
             
@@ -237,11 +246,25 @@ def parse_dairynews_kz():
             elif not link or not link.startswith('http'):
                 continue
             
-            # Ищем дату ОТДЕЛЬНО (не в заголовке!)
-            date_span = block.find('span', class_='data')
-            date_text = date_span.get_text(strip=True) if date_span else ''
+            # Ищем дату ОТДЕЛЬНО
+            date_text = ''
             
-            # Если не нашли — ищем в тексте блока паттерн даты
+            # Ищем в span class="data"
+            date_span = block.find('span', class_='data')
+            if date_span:
+                date_text = date_span.get_text(strip=True)
+            
+            # Если не нашли — ищем рядом с локацией
+            if not date_text:
+                location_div = block.find('div', class_=lambda x: x and 'location' in x)
+                if location_div:
+                    next_elem = location_div.find_next_sibling()
+                    if next_elem:
+                        date_match = re.search(r'(\d{2}\.\d{2}\.\d{4})', next_elem.get_text())
+                        if date_match:
+                            date_text = date_match.group(1)
+            
+            # Если всё ещё не нашли — ищем по всему блоку
             if not date_text:
                 date_match = re.search(r'(\d{2}\.\d{2}\.\d{4})', block.get_text())
                 if date_match:
@@ -362,44 +385,33 @@ def main():
     today = datetime.now().strftime("%d %B %Y").replace(' 0', ' ')
     message = f"📰 АГРО ДАЙДЖЕСТ | {today}\n\n"
     sources = set()
-
+    
     for i, news in enumerate(news_batch, 1):
-        # Заголовок (уже очищен от дат)
-        message += f"🔹 {news['title']}\n"
+        # Заголовок — ЖИРНЫМ (VK Markdown **)
+        message += f"**🔹 {news['title']}**\n"
         
-        # Описание — ТОЛЬКО если оно НЕ пустое и отличается от заголовка
+        # Описание — УВЕЛИЧИЛИ до 250 символов
         if news['description']:
-            desc = news['description'][:150].strip()
+            desc = news['description'][:250].strip()
             title_lower = news['title'].lower().strip()
             desc_lower = desc.lower().strip()
             
-            # Добавляем описание только если оно существенно отличается
+            # Добавляем описание только если отличается
             if desc_lower and title_lower not in desc_lower and desc_lower not in title_lower:
-                if len(news['description']) > 150:
+                if len(news['description']) > 250:
                     desc += "..."
-                message += f"   {desc}\n"
+                message += f"{desc}\n"
         
-        # ← ДОБАВЛЕНО: пустая строка перед источником
+        # Пустая строка
         message += "\n"
         
-        # Источник
+        # Источник (ОДИН РАЗ!)
         domain = news['source']
         sources.add(domain)
-        message += f"   📎 {domain}\n"
+        message += f"📎 {domain}\n"
         
-        # Пустая строка между новостями
-        message += "\n"
-        
-        # ← ДОБАВЛЕНО: пустая строка перед источником
-        message += "\n"
-        
-        # Источник
-        domain = news['source']
-        sources.add(domain)
-        message += f"   📎 {domain}\n"
-        
-        # Пустая строка между новостями
-        message += "\n"
+        # Две пустые строки между новостями
+        message += "\n\n"
     
     # === Хештеги и CTA — ОДИН РАЗ В КОНЦЕ ===
     hashtags = get_random_hashtags(4)
