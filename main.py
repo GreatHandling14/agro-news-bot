@@ -185,12 +185,16 @@ def parse_dairynews_kz():
         soup = BeautifulSoup(response.content, 'lxml')
         
         items = []
-        news_blocks = soup.find_all('div', class_='row no-gutters')
+        # ИСПРАВЛЕНО: правильный класс с ТРЕМЯ 's'
+        news_blocks = soup.find_all('div', class_='row no-guttersss')
         
         print(f"   Найдено блоков: {len(news_blocks)}")
         
         for block in news_blocks:
-            link_tag = block.find('h3', class_='title')
+            # Ищем заголовок и ссылку
+            title_tag = block.find('h3', class_='title')
+            link_tag = title_tag.find('a') if title_tag else None
+            
             if not link_tag:
                 link_tag = block.find('a', href=True)
             
@@ -200,14 +204,28 @@ def parse_dairynews_kz():
             title = link_tag.get_text(strip=True)
             link = link_tag.get('href')
             
+            # Если ссылка относительная — делаем абсолютной
             if link and link.startswith('/'):
                 link = 'https://dairynews.today' + link
             elif not link or not link.startswith('http'):
                 continue
             
-            date_span = block.find('span', class_='data')
-            date_text = date_span.get_text(strip=True) if date_span else ''
+            # Дата (ищем в соседнем блоке)
+            # Находим родительский блок с датой
+            parent_div = block.find_parent('div', class_='col-12')
+            date_span = None
+            if parent_div:
+                # Ищем дату в тексте (формат: "Казахстан 01.06.2026")
+                import re
+                date_match = re.search(r'(\d{2}\.\d{2}\.\d{4})', parent_div.get_text())
+                if date_match:
+                    date_text = date_match.group(1)
+                else:
+                    date_text = ''
+            else:
+                date_text = ''
             
+            # Парсим дату
             pub_datetime = datetime.now()
             if date_text:
                 try:
@@ -215,8 +233,9 @@ def parse_dairynews_kz():
                 except:
                     pass
             
-            desc_tag = block.find('div', class_='infotitle')
-            description = desc_tag.get_text(strip=True)[:300] if desc_tag else ''
+            # Описание
+            desc_div = block.find('div', class_='infotitle')
+            description = desc_div.get_text(strip=True)[:300] if desc_div else ''
             
             if title and link:
                 items.append({
@@ -232,6 +251,8 @@ def parse_dairynews_kz():
         
     except Exception as e:
         print(f"   ❌ Ошибка парсинга DairyNews: {e}")
+        import traceback
+        traceback.print_exc()
         return []
 
 def filter_news(items, published_urls):
