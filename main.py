@@ -13,12 +13,12 @@ from bs4 import BeautifulSoup
 # === КОНФИГУРАЦИЯ ===
 RSS_URLS = [
     'https://www.agroinvestor.ru/feed/public-agronews.xml',
-    # Google News УБРАН — только дублирует контент
+    # Google News УБРАН — только дублирует и портит посты
 ]
 
 MIN_NEWS_FOR_POST = 1
 MAX_NEWS_FOR_POST = 7
-MAX_AGE_DAYS = 5
+MAX_AGE_DAYS = 14       # УВЕЛИЧИЛ до 2 недель (было 5 дней)
 
 VK_ACCESS_TOKEN = os.getenv('VK_ACCESS_TOKEN')
 VK_GROUP_ID = os.getenv('VK_GROUP_ID')
@@ -36,7 +36,20 @@ HASHTAG_POOL = [
     '#пестициды', '#поле', '#гербициды', '#фунгициды',
 ]
 
-# === ФУНКЦИИ ===
+# === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===
+
+def _clean_title(title):
+    """Убирает даты и лишнюю информацию из заголовка"""
+    # Убираем даты в формате "01.06.2026" или "01 июня 2026"
+    title = re.sub(r'\s*\d{1,2}[.\-]\d{1,2}[.\-]\d{2,4}\s*', ' ', title)
+    title = re.sub(r'\s*\d{1,2}\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)\s+\d{4}\s*', ' ', title, flags=re.IGNORECASE)
+    
+    # Убираем лишние пробелы
+    title = ' '.join(title.split())
+    
+    return title.strip()
+
+# === ОСНОВНЫЕ ФУНКЦИИ ===
 
 def load_published():
     """Загружает список опубликованных URL"""
@@ -129,18 +142,18 @@ def parse_all_rss():
             
             for entry in feed.entries:
                 title = entry.get('title', '').strip()
+                # Очищаем заголовок от дат
+                title = _clean_title(title)
+                
                 link = entry.get('link', '').strip()
                 description = entry.get('description', '')
                 pub_date = entry.get('published', '')
                 
-                # Очищаем описание
                 description = html.unescape(description)
                 clean_desc = re.sub(r'<[^>]+>', '', description)[:300]
                 
-                # Источник
                 source_name = urlparse(link).netloc.replace('www.', '')
                 
-                # Парсим дату
                 pub_datetime = datetime.now()
                 if pub_date:
                     try:
@@ -148,7 +161,6 @@ def parse_all_rss():
                     except:
                         pass
                 
-                # Проверяем возраст
                 age = datetime.now() - pub_datetime
                 if age.days > MAX_AGE_DAYS:
                     continue
@@ -191,7 +203,6 @@ def parse_dairynews_kz():
         print(f"   Найдено блоков: {len(news_blocks)}")
         
         for block in news_blocks:
-            # Ищем заголовок и ссылку
             title_tag = block.find('h3', class_='title')
             link_tag = title_tag.find('a') if title_tag else None
             
@@ -202,30 +213,24 @@ def parse_dairynews_kz():
                 continue
             
             title = link_tag.get_text(strip=True)
+            # Очищаем заголовок от дат
+            title = _clean_title(title)
+            
             link = link_tag.get('href')
             
-            # Если ссылка относительная — делаем абсолютной
             if link and link.startswith('/'):
                 link = 'https://dairynews.today' + link
             elif not link or not link.startswith('http'):
                 continue
             
-            # Дата (ищем в соседнем блоке)
-            # Находим родительский блок с датой
+            # Ищем дату
             parent_div = block.find_parent('div', class_='col-12')
-            date_span = None
+            date_text = ''
             if parent_div:
-                # Ищем дату в тексте (формат: "Казахстан 01.06.2026")
-                import re
                 date_match = re.search(r'(\d{2}\.\d{2}\.\d{4})', parent_div.get_text())
                 if date_match:
                     date_text = date_match.group(1)
-                else:
-                    date_text = ''
-            else:
-                date_text = ''
             
-            # Парсим дату
             pub_datetime = datetime.now()
             if date_text:
                 try:
@@ -233,7 +238,6 @@ def parse_dairynews_kz():
                 except:
                     pass
             
-            # Описание
             desc_div = block.find('div', class_='infotitle')
             description = desc_div.get_text(strip=True)[:300] if desc_div else ''
             
@@ -251,8 +255,6 @@ def parse_dairynews_kz():
         
     except Exception as e:
         print(f"   ❌ Ошибка парсинга DairyNews: {e}")
-        import traceback
-        traceback.print_exc()
         return []
 
 def filter_news(items, published_urls):
@@ -261,7 +263,6 @@ def filter_news(items, published_urls):
     seen_urls = set()
     
     for item in items:
-        # Пропускаем если URL уже опубликован
         if item['link'] in published_urls or item['link'] in seen_urls:
             continue
         
@@ -343,7 +344,7 @@ def main():
     sources = set()
     
     for i, news in enumerate(news_batch, 1):
-        # Заголовок
+        # Заголовок (уже очищен от дат)
         message += f"🔹 {news['title']}\n"
         
         # Описание — ТОЛЬКО если оно НЕ пустое и отличается от заголовка
