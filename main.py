@@ -13,14 +13,11 @@ from bs4 import BeautifulSoup
 # === КОНФИГУРАЦИЯ ===
 RSS_URLS = [
     'https://www.agroinvestor.ru/feed/public-agronews.xml',
-    'https://newsnovosti.ru/novosti-selskoe-hozajstvo/'
-     # Google News по агро-тематике (РАБОТАЕТ!):
-    'https://news.google.com/rss/search?q=сельское+хозяйство+Россия&hl=ru&gl=RU&ceid=RU:ru',
-    'https://news.google.com/rss/search?q=АПК+агропром+животноводство&hl=ru&gl=RU&ceid=RU:ru',
-    'https://news.google.com/rss/search?q=растениеводство+урожай+зерно&hl=ru&gl=RU&ceid=RU:ru',
+    # Google News (оставляем как бэкап, но фильтруем по дате)
+    'https://news.google.com/rss/search?q=сельское+хозяйство+Россия+АПК&hl=ru&gl=RU&ceid=RU:ru',
 ]
 
-MIN_NEWS_FOR_POST = 5  # Минимум новостей для публикации
+MIN_NEWS_FOR_POST = 1  # Публиковать даже 1 новость
 MAX_NEWS_FOR_POST = 7  # Максимум в дайджесте
 MAX_AGE_DAYS = 5       # Брать новости не старше 5 дней
 
@@ -171,8 +168,79 @@ def parse_all_rss():
             print(f"   ❌ Ошибка: {e}")
             continue
     
-    print(f"\n✅ Всего новостей из всех источников: {len(all_items)}")
+    print(f"✅ RSS: {len(all_items)} новостей")
     return all_items
+
+def parse_dairynews_kz():
+    """Парсит новости dairynews.today/kz/ (HTML парсинг)"""
+    url = 'https://dairynews.today/kz/'
+    print(f"\n📰 Парсинг HTML: {url}")
+    
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+        
+        response = requests.get(url, headers=headers, timeout=15)
+        soup = BeautifulSoup(response.content, 'lxml')
+        
+        items = []
+        # Ищем блоки новостей
+        news_blocks = soup.find_all('div', class_='row no-gutters')
+        
+        print(f"   Найдено блоков: {len(news_blocks)}")
+        
+        for block in news_blocks:
+            # Ссылка и заголовок
+            link_tag = block.find('h3', class_='title')
+            if not link_tag:
+                link_tag = block.find('a', href=True)
+            
+            if not link_tag:
+                continue
+            
+            title = link_tag.get_text(strip=True)
+            link = link_tag.get('href')
+            
+            # Если ссылка относительная — делаем абсолютной
+            if link and link.startswith('/'):
+                link = 'https://dairynews.today' + link
+            elif link and link.startswith('http'):
+                pass  # Уже абсолютная
+            else:
+                continue  # Нет ссылки
+            
+            # Дата
+            date_span = block.find('span', class_='data')
+            date_text = date_span.get_text(strip=True) if date_span else ''
+            
+            # Парсим дату (формат: 01.06.2026)
+            pub_datetime = datetime.now()
+            if date_text:
+                try:
+                    pub_datetime = datetime.strptime(date_text, '%d.%m.%Y')
+                except:
+                    pass
+            
+            # Описание
+            desc_tag = block.find('div', class_='infotitle')
+            description = desc_tag.get_text(strip=True)[:300] if desc_tag else ''
+            
+            if title and link:
+                items.append({
+                    'title': title,
+                    'link': link,
+                    'description': description,
+                    'published_at': pub_datetime,
+                    'source': 'dairynews.today'
+                })
+        
+        print(f"   ✅ DairyNews: {len(items)} новостей")
+        return items
+        
+    except Exception as e:
+        print(f"   ❌ Ошибка парсинга DairyNews: {e}")
+        return []
 
 def filter_news(items, published_urls):
     """Фильтрует уже опубликованные новости"""
@@ -213,35 +281,41 @@ def main():
     print("\n📰 Парсинг всех источников...")
     all_items = parse_all_rss()
     
+    # 2. Парсим DairyNews (HTML)
+    dairy_items = parse_dairynews_kz()
+    all_items.extend(dairy_items)
+    
+    print(f"\n✅ ВСЕГО новостей из всех источников: {len(all_items)}")
+    
     if not all_items:
-        print("❌ Нет новостей в RSS")
+        print("❌ Нет новостей")
         return
     
-    # 2. Загружаем опубликованные
+    # 3. Загружаем опубликованные
     print("\n📋 Загрузка опубликованных...")
     published = load_published()
     published_urls = [p['url'] for p in published]
     print(f"   Опубликовано: {len(published_urls)}")
     
-    # 3. Фильтруем дубликаты
+    # 4. Фильтруем дубликаты
     print("\n🔍 Фильтрация дубликатов...")
     new_items = [item for item in all_items if item['link'] not in published_urls]
     print(f"   Новых новостей: {len(new_items)}")
     
-    # 4. Проверяем минимум
+    # 5. Проверяем минимум
     if len(new_items) < MIN_NEWS_FOR_POST:
         print(f"\n⏸️  Мало новостей ({len(new_items)} < {MIN_NEWS_FOR_POST})")
         print("   Ждём следующего запуска...")
         return
     
-    # 5. Сортируем по дате (сначала новые)
+    # 6. Сортируем по дате (сначала новые)
     new_items.sort(key=lambda x: x['published_at'], reverse=True)
     
-    # 6. Берем 5-7 новостей
+    # 7. Берем новости для дайджеста
     news_batch = new_items[:MAX_NEWS_FOR_POST]
     print(f"\n📋 Формируем дайджест из {len(news_batch)} новостей...")
     
-    # 7. Формируем пост
+    # 8. Формируем пост
     today = datetime.now().strftime("%d %B %Y").replace(' 0', ' ')
     message = f"📰 АГРО ДАЙДЖЕСТ | {today}\n\n"
     sources = set()
@@ -265,7 +339,7 @@ def main():
         # Пустая строка между новостями
         message += "\n"
     
-    # === ЭТО ВНЕ ЦИКЛА: хештеги и CTA один раз в конце ===
+    # === Хештеги и CTA — ОДИН РАЗ В КОНЦЕ ===
     hashtags = get_random_hashtags(4)
     cta = "\n🔔 Подписывайтесь @yugagronews, чтобы не пропустить важные агро-новости!"
     sources_str = ', '.join(sources)
@@ -276,12 +350,12 @@ def main():
     
     print(f"\n💬 Сообщение ({len(message)} символов):")
     
-    # 8. Публикуем в VK
+    # 9. Публикуем в VK
     print("\n📤 Публикация в VK...")
     success = post_to_vk(message)
     
     if success:
-        # 9. Отмечаем все как опубликованные
+        # 10. Отмечаем как опубликованные
         print("\n💾 Сохранение опубликованных...")
         for news in news_batch:
             mark_as_published(news['link'], news['title'])
