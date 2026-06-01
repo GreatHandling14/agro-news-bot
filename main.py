@@ -40,9 +40,14 @@ HASHTAG_POOL = [
 
 def _clean_title(title):
     """Убирает даты и лишнюю информацию из заголовка"""
-    # Убираем даты в формате "01.06.2026" или "01 июня 2026"
+    # Убираем даты в формате "01.06.2026"
     title = re.sub(r'\s*\d{1,2}[.\-]\d{1,2}[.\-]\d{2,4}\s*', ' ', title)
+    
+    # Убираем даты в формате "01 июня 2026"
     title = re.sub(r'\s*\d{1,2}\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)\s+\d{4}\s*', ' ', title, flags=re.IGNORECASE)
+    
+    # Убираем слова "Казахстан", "Россия", "Мир" в начале (это регионы)
+    title = re.sub(r'^(Казахстан|Россия|Мир|Беларусь)\s*', '', title, flags=re.IGNORECASE)
     
     # Убираем лишние пробелы
     title = ' '.join(title.split())
@@ -197,25 +202,34 @@ def parse_dairynews_kz():
         soup = BeautifulSoup(response.content, 'lxml')
         
         items = []
-        # ИСПРАВЛЕНО: правильный класс с ТРЕМЯ 's'
+        
+        # Ищем ВСЕ блоки с новостями (несколько классов)
         news_blocks = soup.find_all('div', class_='row no-guttersss')
+        
+        # Если не нашли — пробуем альтернативные селекторы
+        if len(news_blocks) == 0:
+            news_blocks = soup.find_all('div', class_='row')
         
         print(f"   Найдено блоков: {len(news_blocks)}")
         
         for block in news_blocks:
+            # Ищем заголовок
             title_tag = block.find('h3', class_='title')
-            link_tag = title_tag.find('a') if title_tag else None
             
-            if not link_tag:
-                link_tag = block.find('a', href=True)
+            if not title_tag:
+                continue
+            
+            # Ищем ссылку внутри заголовка
+            link_tag = title_tag.find('a', href=True)
             
             if not link_tag:
                 continue
             
+            # Получаем заголовок (только текст из h3, без даты)
             title = link_tag.get_text(strip=True)
-            # Очищаем заголовок от дат
             title = _clean_title(title)
             
+            # Получаем ссылку
             link = link_tag.get('href')
             
             if link and link.startswith('/'):
@@ -223,14 +237,17 @@ def parse_dairynews_kz():
             elif not link or not link.startswith('http'):
                 continue
             
-            # Ищем дату
-            parent_div = block.find_parent('div', class_='col-12')
-            date_text = ''
-            if parent_div:
-                date_match = re.search(r'(\d{2}\.\d{2}\.\d{4})', parent_div.get_text())
+            # Ищем дату ОТДЕЛЬНО (не в заголовке!)
+            date_span = block.find('span', class_='data')
+            date_text = date_span.get_text(strip=True) if date_span else ''
+            
+            # Если не нашли — ищем в тексте блока паттерн даты
+            if not date_text:
+                date_match = re.search(r'(\d{2}\.\d{2}\.\d{4})', block.get_text())
                 if date_match:
                     date_text = date_match.group(1)
             
+            # Парсим дату
             pub_datetime = datetime.now()
             if date_text:
                 try:
@@ -238,6 +255,7 @@ def parse_dairynews_kz():
                 except:
                     pass
             
+            # Ищем описание
             desc_div = block.find('div', class_='infotitle')
             description = desc_div.get_text(strip=True)[:300] if desc_div else ''
             
@@ -255,6 +273,8 @@ def parse_dairynews_kz():
         
     except Exception as e:
         print(f"   ❌ Ошибка парсинга DairyNews: {e}")
+        import traceback
+        traceback.print_exc()
         return []
 
 def filter_news(items, published_urls):
@@ -342,7 +362,7 @@ def main():
     today = datetime.now().strftime("%d %B %Y").replace(' 0', ' ')
     message = f"📰 АГРО ДАЙДЖЕСТ | {today}\n\n"
     sources = set()
-    
+
     for i, news in enumerate(news_batch, 1):
         # Заголовок (уже очищен от дат)
         message += f"🔹 {news['title']}\n"
@@ -358,6 +378,20 @@ def main():
                 if len(news['description']) > 150:
                     desc += "..."
                 message += f"   {desc}\n"
+        
+        # ← ДОБАВЛЕНО: пустая строка перед источником
+        message += "\n"
+        
+        # Источник
+        domain = news['source']
+        sources.add(domain)
+        message += f"   📎 {domain}\n"
+        
+        # Пустая строка между новостями
+        message += "\n"
+        
+        # ← ДОБАВЛЕНО: пустая строка перед источником
+        message += "\n"
         
         # Источник
         domain = news['source']
