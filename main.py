@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from urllib.parse import urlparse
 import subprocess
 from bs4 import BeautifulSoup
+from itertools import zip_longest
 
 # === КОНФИГУРАЦИЯ ===
 RSS_URLS = [
@@ -38,20 +39,39 @@ HASHTAG_POOL = [
 # === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===
 
 def _clean_title(title):
-    """Убирает даты и лишнюю информацию из заголовка"""
+    """Убирает даты, регионы и лишний мусор из заголовка"""
     # Убираем даты в конце: "Мир01.06.2026" или "Казахстан 01.06.2026"
     title = re.sub(r'[А-Яа-яЁё]*\s*\d{1,2}[.\-]\d{1,2}[.\-]\d{2,4}\s*$', '', title)
-    
     # Убираем даты в любом месте
     title = re.sub(r'\s*\d{1,2}[.\-]\d{1,2}[.\-]\d{2,4}\s*', ' ', title)
-    
     # Убираем слова-регионы в начале
     title = re.sub(r'^(Казахстан|Россия|Мир|Беларусь)\s*', '', title, flags=re.IGNORECASE)
-    
     # Убираем лишние пробелы
     title = ' '.join(title.split())
-    
     return title.strip()
+
+def _mix_sources(items, max_count):
+    """Чередует новости из разных источников, чтобы в дайджесте было разнообразие"""
+    if not items:
+        return []
+    
+    by_source = {}
+    for item in items:
+        src = item['source']
+        if src not in by_source:
+            by_source[src] = []
+        by_source[src].append(item)
+    
+    mixed = []
+    # Чередуем источники по очереди
+    for chunk in zip_longest(*by_source.values(), fillvalue=None):
+        for item in chunk:
+            if item is not None and len(mixed) < max_count:
+                mixed.append(item)
+        if len(mixed) >= max_count:
+            break
+            
+    return mixed
 
 # === ОСНОВНЫЕ ФУНКЦИИ ===
 
@@ -180,7 +200,7 @@ def parse_all_rss():
                 })
         
         except Exception as e:
-            print(f"   ❌ Ошибка: {e}")
+            print(f"    Ошибка: {e}")
             continue
     
     print(f"✅ RSS: {len(all_items)} новостей")
@@ -248,13 +268,10 @@ def parse_dairynews_kz():
             
             # Ищем дату ОТДЕЛЬНО
             date_text = ''
-            
-            # Ищем в span class="data"
             date_span = block.find('span', class_='data')
             if date_span:
                 date_text = date_span.get_text(strip=True)
             
-            # Если не нашли — ищем рядом с локацией
             if not date_text:
                 location_div = block.find('div', class_=lambda x: x and 'location' in x)
                 if location_div:
@@ -264,13 +281,11 @@ def parse_dairynews_kz():
                         if date_match:
                             date_text = date_match.group(1)
             
-            # Если всё ещё не нашли — ищем по всему блоку
             if not date_text:
                 date_match = re.search(r'(\d{2}\.\d{2}\.\d{4})', block.get_text())
                 if date_match:
                     date_text = date_match.group(1)
             
-            # Парсим дату
             pub_datetime = datetime.now()
             if date_text:
                 try:
@@ -278,7 +293,6 @@ def parse_dairynews_kz():
                 except:
                     pass
             
-            # Ищем описание
             desc_div = block.find('div', class_='infotitle')
             description = desc_div.get_text(strip=True)[:300] if desc_div else ''
             
@@ -296,8 +310,6 @@ def parse_dairynews_kz():
         
     except Exception as e:
         print(f"   ❌ Ошибка парсинга DairyNews: {e}")
-        import traceback
-        traceback.print_exc()
         return []
 
 def filter_news(items, published_urls):
@@ -364,21 +376,21 @@ def main():
     print(f"   Опубликовано: {len(published_urls)}")
     
     # 3. Фильтруем дубликаты
-    print("\n🔍 Фильтрация дубликатов...")
+    print("\n Фильтрация дубликатов...")
     new_items = filter_news(all_items, published_urls)
     print(f"   Новых новостей: {len(new_items)}")
     
     # 4. Проверяем минимум
     if len(new_items) < MIN_NEWS_FOR_POST:
-        print(f"\n⏸️  Мало новостей ({len(new_items)} < {MIN_NEWS_FOR_POST})")
+        print(f"\n️  Мало новостей ({len(new_items)} < {MIN_NEWS_FOR_POST})")
         print("   Ждём следующего запуска...")
         return
     
     # 5. Сортируем по дате (сначала новые)
     new_items.sort(key=lambda x: x['published_at'], reverse=True)
     
-    # 6. Берем новости для дайджеста
-    news_batch = new_items[:MAX_NEWS_FOR_POST]
+    # 6. ЧЕРЕДУЕМ ИСТОЧНИКИ (чтобы DairyNews точно попал в пост)
+    news_batch = _mix_sources(new_items, MAX_NEWS_FOR_POST)
     print(f"\n📋 Формируем дайджест из {len(news_batch)} новостей...")
     
     # 7. Формируем пост
@@ -387,22 +399,22 @@ def main():
     sources = set()
     
     for i, news in enumerate(news_batch, 1):
-        # Заголовок — ЖИРНЫМ (VK Markdown **)
-        message += f"**🔹 {news['title']}**\n"
+        # Заголовок (VK не поддерживает markdown через API, используем чистый формат с эмодзи)
+        message += f"🔹 {news['title']}\n"
         
-        # Описание — УВЕЛИЧИЛИ до 250 символов
+        # Описание — до 250 символов
         if news['description']:
             desc = news['description'][:250].strip()
             title_lower = news['title'].lower().strip()
             desc_lower = desc.lower().strip()
             
-            # Добавляем описание только если отличается
+            # Добавляем описание только если отличается от заголовка
             if desc_lower and title_lower not in desc_lower and desc_lower not in title_lower:
                 if len(news['description']) > 250:
                     desc += "..."
                 message += f"{desc}\n"
         
-        # Пустая строка
+        # Пустая строка перед источником
         message += "\n"
         
         # Источник (ОДИН РАЗ!)
@@ -410,19 +422,19 @@ def main():
         sources.add(domain)
         message += f"📎 {domain}\n"
         
-        # Две пустые строки между новостями
-        message += "\n\n"
+        # Разделитель между новостями
+        message += "\n" + "─" * 20 + "\n\n"
     
     # === Хештеги и CTA — ОДИН РАЗ В КОНЦЕ ===
     hashtags = get_random_hashtags(4)
-    cta = "\n🔔 Подписывайтесь @yugagronews, чтобы не пропустить важные агро-новости!"
+    cta = "🔔 Подписывайтесь @yugagronews, чтобы не пропустить важные агро-новости!"
     sources_str = ', '.join(sources)
     
     message += f"📌 Источники: {sources_str}\n\n"
-    message += f"{hashtags}\n"
-    message += f"{cta}"
+    message += f"{hashtags}\n\n"
+    message += cta
     
-    print(f"\n💬 Сообщение ({len(message)} символов):")
+    print(f"\n Сообщение ({len(message)} символов):")
     
     # 8. Публикуем в VK
     print("\n📤 Публикация в VK...")
