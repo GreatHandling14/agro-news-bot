@@ -14,6 +14,10 @@ from bs4 import BeautifulSoup
 RSS_URLS = [
     'https://www.agroinvestor.ru/feed/public-agronews.xml',
     'https://newsnovosti.ru/novosti-selskoe-hozajstvo/'
+     # Google News по агро-тематике (РАБОТАЕТ!):
+    'https://news.google.com/rss/search?q=сельское+хозяйство+Россия&hl=ru&gl=RU&ceid=RU:ru',
+    'https://news.google.com/rss/search?q=АПК+агропром+животноводство&hl=ru&gl=RU&ceid=RU:ru',
+    'https://news.google.com/rss/search?q=растениеводство+урожай+зерно&hl=ru&gl=RU&ceid=RU:ru',
 ]
 
 MIN_NEWS_FOR_POST = 5  # Минимум новостей для публикации
