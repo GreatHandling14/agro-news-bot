@@ -16,7 +16,7 @@ RSS_URLS = [
     'https://newsnovosti.ru/novosti-selskoe-hozajstvo/'
 ]
 
-MIN_NEWS_FOR_POST = 1  # Минимум новостей для публикации
+MIN_NEWS_FOR_POST = 5  # Минимум новостей для публикации
 MAX_NEWS_FOR_POST = 7  # Максимум в дайджесте
 MAX_AGE_DAYS = 5       # Брать новости не старше 5 дней
 
