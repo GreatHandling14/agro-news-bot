@@ -39,15 +39,29 @@ HASHTAG_POOL = [
 # === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===
 
 def _clean_title(title):
-    """Убирает даты, регионы и лишний мусор из заголовка"""
-    # Убираем даты в конце: "Мир01.06.2026" или "Казахстан 01.06.2026"
-    title = re.sub(r'[А-Яа-яЁё]*\s*\d{1,2}[.\-]\d{1,2}[.\-]\d{2,4}\s*$', '', title)
-    # Убираем даты в любом месте
+    """Агрессивно убирает даты, регионы и мусор из заголовка"""
+    # 1. Убираем переносы строк (часто дата на новой строке)
+    title = title.replace('\n', ' ').replace('\r', ' ')
+    
+    # 2. Убираем даты в формате "01.06.2026" или "01-06-2026" (в любом месте)
     title = re.sub(r'\s*\d{1,2}[.\-]\d{1,2}[.\-]\d{2,4}\s*', ' ', title)
-    # Убираем слова-регионы в начале
-    title = re.sub(r'^(Казахстан|Россия|Мир|Беларусь)\s*', '', title, flags=re.IGNORECASE)
-    # Убираем лишние пробелы
+    
+    # 3. Убираем слова-регионы перед датами: "Мир01.06.2026" → ""
+    title = re.sub(r'(Мир|Казахстан|Россия|Беларусь|Украина)\s*\d{1,2}[.\-]\d{1,2}[.\-]\d{2,4}', '', title, flags=re.IGNORECASE)
+    
+    # 4. Убираем слова-регионы в начале (если остались)
+    title = re.sub(r'^(Мир|Казахстан|Россия|Беларусь|Украина)\s*', '', title, flags=re.IGNORECASE)
+    
+    # 5. Убираем "Новости" в конце
+    title = re.sub(r'\s*Новости\s*$', '', title, flags=re.IGNORECASE)
+    
+    # 6. Убираем лишние пробелы
     title = ' '.join(title.split())
+    
+    # 7. Убираем точку в конце если есть
+    if title.endswith('.'):
+        title = title[:-1]
+    
     return title.strip()
 
 def _mix_sources(items, max_count):
@@ -222,11 +236,11 @@ def parse_dairynews_kz():
         items = []
         news_blocks = []
         
-        # Способ 1: по классу row no-guttersss
+        # Ищем блоки новостей
         blocks1 = soup.find_all('div', class_='row no-guttersss')
         news_blocks.extend(blocks1)
         
-        # Способ 2: ищем все h3 с классом title и берём их родителей
+        # Альтернативный поиск
         h3_tags = soup.find_all('h3', class_='title')
         for h3 in h3_tags:
             parent = h3.find_parent('div', class_=lambda x: x and 'col-' in x)
@@ -236,27 +250,27 @@ def parse_dairynews_kz():
         print(f"   Найдено блоков: {len(news_blocks)}")
         
         for block in news_blocks:
-            # Ищем заголовок
-            if block.name == 'h3' and 'title' in block.get('class', []):
-                title_tag = block
-            else:
-                title_tag = block.find('h3', class_='title')
+            # Ищем заголовок ТОЛЬКО в h3.title
+            title_tag = block.find('h3', class_='title')
             
             if not title_tag:
                 continue
             
-            # Ищем ссылку
-            link_tag = title_tag.find('a', href=True) if title_tag.name != 'a' else title_tag
-            
-            if not link_tag:
-                link_tag = block.find('a', href=True)
+            # Ищем ссылку ВНУТРИ h3
+            link_tag = title_tag.find('a', href=True)
             
             if not link_tag:
                 continue
             
-            # Получаем заголовок
+            # Берём текст ТОЛЬКО из ссылки внутри h3 (не весь блок!)
             title = link_tag.get_text(strip=True)
+            
+            # ЧИСТИМ ЗАГОЛОВОК АГРЕССИВНО
             title = _clean_title(title)
+            
+            # Если заголовок пустой после очистки — пропускаем
+            if not title or len(title) < 10:
+                continue
             
             # Получаем ссылку
             link = link_tag.get('href')
@@ -266,12 +280,15 @@ def parse_dairynews_kz():
             elif not link or not link.startswith('http'):
                 continue
             
-            # Ищем дату ОТДЕЛЬНО
+            # Ищем дату ОТДЕЛЬНО от заголовка
             date_text = ''
+            
+            # Ищем в span class="data"
             date_span = block.find('span', class_='data')
             if date_span:
                 date_text = date_span.get_text(strip=True)
             
+            # Если не нашли — ищем рядом с локацией
             if not date_text:
                 location_div = block.find('div', class_=lambda x: x and 'location' in x)
                 if location_div:
@@ -281,11 +298,19 @@ def parse_dairynews_kz():
                         if date_match:
                             date_text = date_match.group(1)
             
+            # Если всё ещё не нашли — ищем по всему блоку (но НЕ в h3!)
             if not date_text:
-                date_match = re.search(r'(\d{2}\.\d{2}\.\d{4})', block.get_text())
+                # Берём текст блока БЕЗ h3
+                block_text_no_title = ''
+                for elem in block.find_all(string=True):
+                    if elem.parent.name != 'h3':
+                        block_text_no_title += elem + ' '
+                
+                date_match = re.search(r'(\d{2}\.\d{2}\.\d{4})', block_text_no_title)
                 if date_match:
                     date_text = date_match.group(1)
             
+            # Парсим дату
             pub_datetime = datetime.now()
             if date_text:
                 try:
@@ -293,6 +318,7 @@ def parse_dairynews_kz():
                 except:
                     pass
             
+            # Ищем описание
             desc_div = block.find('div', class_='infotitle')
             description = desc_div.get_text(strip=True)[:300] if desc_div else ''
             
@@ -310,6 +336,8 @@ def parse_dairynews_kz():
         
     except Exception as e:
         print(f"   ❌ Ошибка парсинга DairyNews: {e}")
+        import traceback
+        traceback.print_exc()
         return []
 
 def filter_news(items, published_urls):
@@ -376,13 +404,13 @@ def main():
     print(f"   Опубликовано: {len(published_urls)}")
     
     # 3. Фильтруем дубликаты
-    print("\n Фильтрация дубликатов...")
+    print("\n🔍 Фильтрация дубликатов...")
     new_items = filter_news(all_items, published_urls)
     print(f"   Новых новостей: {len(new_items)}")
     
     # 4. Проверяем минимум
     if len(new_items) < MIN_NEWS_FOR_POST:
-        print(f"\n️  Мало новостей ({len(new_items)} < {MIN_NEWS_FOR_POST})")
+        print(f"\n⏸️  Мало новостей ({len(new_items)} < {MIN_NEWS_FOR_POST})")
         print("   Ждём следующего запуска...")
         return
     
@@ -399,7 +427,7 @@ def main():
     sources = set()
     
     for i, news in enumerate(news_batch, 1):
-        # Заголовок (VK не поддерживает markdown через API, используем чистый формат с эмодзи)
+        # Заголовок (чистый текст без дат)
         message += f"🔹 {news['title']}\n"
         
         # Описание — до 250 символов
@@ -434,7 +462,7 @@ def main():
     message += f"{hashtags}\n\n"
     message += cta
     
-    print(f"\n Сообщение ({len(message)} символов):")
+    print(f"\n💬 Сообщение ({len(message)} символов):")
     
     # 8. Публикуем в VK
     print("\n📤 Публикация в VK...")
