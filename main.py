@@ -431,18 +431,32 @@ def main():
     for i, news in enumerate(news_batch, 1):
         # Заголовок (теперь точно без даты)
         message += f"🔹 {news['title']}\n"
-        
-        # Описание - ТОЛЬКО если оно СУЩЕСТВЕННО отличается от заголовка
+    
+                # Описание — умная обрезка (не на полуслове)
         if news['description']:
-            desc = news['description'][:250].strip()
+            full_desc = news['description'].strip()
+            
+            # Обрезаем только если описание длинное
+            if len(full_desc) > 200:
+                # Ищем последнюю точку в пределах 200 символов
+                cut_desc = full_desc[:200]
+                last_period = cut_desc.rfind('.')
+                last_space = cut_desc.rfind(' ')
+                
+                # Режем на границе предложения или слова
+                if last_period > 150:
+                    desc = cut_desc[:last_period+1]
+                elif last_space > 150:
+                    desc = cut_desc[:last_space] + "..."
+                else:
+                    desc = full_desc[:200] + "..."
+            else:
+                desc = full_desc
+            
+            # Проверяем что описание отличается от заголовка
             title_lower = news['title'].lower().strip()
             desc_lower = desc.lower().strip()
             
-            # НЕ добавляем описание если:
-            # 1. Оно пустое
-            # 2. Оно совпадает с заголовком
-            # 3. Заголовок содержится в описании (или наоборот)
-            # 4. Они похожи (первые 50 символов совпадают)
             should_skip = False
             
             if not desc_lower:
@@ -456,17 +470,7 @@ def main():
                     should_skip = True
             
             if not should_skip:
-                if len(news['description']) > 250:
-                    desc += "..."
                 message += f"{desc}\n"
-        
-        # Источник
-        domain = news['source']
-        sources.add(domain)
-        message += f"📎 {domain}\n"
-        
-        # Пустая строка
-        message += "\n"
     
     # === Хештеги и CTA - ОДИН РАЗ В КОНЦЕ ===
     hashtags = get_random_hashtags(4)
