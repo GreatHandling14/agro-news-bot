@@ -263,14 +263,12 @@ def parse_dairynews_kz():
         soup = BeautifulSoup(response.content, 'lxml')
         
         items = []
-        
-        # Ищем блоки новостей по новому классу (основная лента)
         news_blocks = soup.find_all('div', class_='main-news-item')
         
         print(f"   Найдено блоков: {len(news_blocks)}")
         
         for block in news_blocks:
-            # 1. Заголовок (ОН ЧИСТЫЙ, без даты!)
+            # 1. Заголовок
             title_tag = block.find('h3', class_='title')
             if not title_tag:
                 continue
@@ -281,16 +279,22 @@ def parse_dairynews_kz():
             if not title or len(title) < 10:
                 continue
             
-            # 2. Ссылка
+            # 2. ССЫЛКА — ИСПРАВЛЕНО
             link_tag = block.find('a', class_='title-link')
             if not link_tag:
                 continue
             
             link = link_tag.get('href')
-            if link and link.startswith('/'):
-                link = 'https://dairynews.today' + link
             
-            # 3. Дата (ОНА ОТДЕЛЬНО!)
+            # Если ссылка относительная — делаем абсолютной
+            if link and link.startswith('/'):
+                # Убираем /kz/ в начале если есть дублирование
+                if link.startswith('/kz/'):
+                    link = 'https://dairynews.today' + link
+                else:
+                    link = 'https://dairynews.today/kz' + link
+            
+            # 3. Дата
             date_span = block.find('span', class_='data')
             date_text = date_span.get_text(strip=True) if date_span else ''
             
@@ -301,9 +305,27 @@ def parse_dairynews_kz():
                 except:
                     pass
             
-            # 4. Описание
+            # 4. Описание — ИСПРАВЛЕНО (не обрезаем на полуслове)
             desc_tag = block.find('div', class_='text')
-            description = desc_tag.get_text(strip=True)[:300] if desc_tag else ''
+            if desc_tag:
+                full_desc = desc_tag.get_text(strip=True)
+                # Обрезаем на границе предложения или слова
+                if len(full_desc) > 200:
+                    # Ищем последнюю точку или пробел
+                    cut_desc = full_desc[:200]
+                    last_period = cut_desc.rfind('.')
+                    last_space = cut_desc.rfind(' ')
+                    
+                    if last_period > 150:
+                        description = cut_desc[:last_period+1]
+                    elif last_space > 150:
+                        description = cut_desc[:last_space] + "..."
+                    else:
+                        description = full_desc[:200] + "..."
+                else:
+                    description = full_desc
+            else:
+                description = ''
             
             items.append({
                 'title': title,
