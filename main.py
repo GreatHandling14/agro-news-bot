@@ -279,7 +279,7 @@ def parse_dairynews_kz():
             if not title or len(title) < 10:
                 continue
             
-            # 2. ССЫЛКА — ИСПРАВЛЕНО
+            # 2. ССЫЛКА
             link_tag = block.find('a', class_='title-link')
             if not link_tag:
                 continue
@@ -287,12 +287,12 @@ def parse_dairynews_kz():
             link = link_tag.get('href')
             
             # Если ссылка относительная — делаем абсолютной
-            if link and link.startswith('/'):
-                # Убираем /kz/ в начале если есть дублирование
+            if link:
                 if link.startswith('/kz/'):
                     link = 'https://dairynews.today' + link
-                else:
+                elif link.startswith('/'):
                     link = 'https://dairynews.today/kz' + link
+                # Если уже полная ссылка — оставляем как есть
             
             # 3. Дата
             date_span = block.find('span', class_='data')
