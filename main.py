@@ -428,7 +428,7 @@ def main():
     message = f"📰 АГРО ДАЙДЖЕСТ | {today}\n\n"
     sources = set()
     
-        for i, news in enumerate(news_batch, 1):
+    for i, news in enumerate(news_batch, 1):
         # Заголовок (теперь точно без даты)
         message += f"🔹 {news['title']}\n"
         
