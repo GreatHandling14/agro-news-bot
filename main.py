@@ -479,7 +479,7 @@ def main():
         # Источник
         domain = news['source']
         sources.add(domain)
-        message += f"📎 {domain}\n"
+        
         
         # Пустая строка
         message += "\n"
