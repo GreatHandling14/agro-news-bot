@@ -428,11 +428,11 @@ def main():
     message = f"📰 АГРО ДАЙДЖЕСТ | {today}\n\n"
     sources = set()
     
-    for i, news in enumerate(news_batch, 1):
+        for i, news in enumerate(news_batch, 1):
         # Заголовок (теперь точно без даты)
         message += f"🔹 {news['title']}\n"
-    
-                # Описание — умная обрезка (не на полуслове)
+        
+        # Описание — умная обрезка (не на полуслове)
         if news['description']:
             full_desc = news['description'].strip()
             
@@ -471,6 +471,18 @@ def main():
             
             if not should_skip:
                 message += f"{desc}\n"
+        
+        # ССЫЛКА НА СТАТЬЮ — ДОБАВЛЕНО
+        if news['link']:
+            message += f"🔗 {news['link']}\n"
+        
+        # Источник
+        domain = news['source']
+        sources.add(domain)
+        message += f"📎 {domain}\n"
+        
+        # Пустая строка
+        message += "\n"
     
     # === Хештеги и CTA - ОДИН РАЗ В КОНЦЕ ===
     hashtags = get_random_hashtags(4)
