@@ -22,6 +22,7 @@ MAX_NEWS_FOR_POST = 7
 MAX_AGE_DAYS = 14       # 2 недели
 
 VK_ACCESS_TOKEN = os.getenv('VK_ACCESS_TOKEN')
+VK_USER_TOKEN = os.getenv('VK_USER_TOKEN')  # Добавил User Token
 VK_GROUP_ID = os.getenv('VK_GROUP_ID')
 PUBLISHED_FILE = 'published.json'
 
@@ -351,8 +352,111 @@ def get_random_image_url():
     print(f"   🖼️ Выбрана картинка: {image_url}")
     return image_url
 
-def post_to_vk(message):
-    """Публикует пост в VK"""
+def download_image(image_url):
+    """Скачивает картинку по URL и возвращает путь к временному файлу"""
+    import tempfile
+    
+    try:
+        response = requests.get(image_url, timeout=15)
+        response.raise_for_status()
+        
+        # Сохраняем во временный файл
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
+        temp_file.write(response.content)
+        temp_file.close()
+        
+        print(f"   ✅ Картинка скачана: {temp_file.name}")
+        return temp_file.name
+        
+    except Exception as e:
+        print(f"   ❌ Ошибка скачивания картинки: {e}")
+        return None
+
+def upload_image_to_vk(image_path):
+    """Загружает картинку в VK через User Token"""
+    if not image_path:
+        return None
+    
+    if not VK_USER_TOKEN:
+        print("   ❌ VK_USER_TOKEN не найден в переменных окружения")
+        return None
+    
+    try:
+        # 1. Получаем URL для загрузки
+        upload_url_req = requests.post(
+            'https://api.vk.com/method/photos.getWallUploadServer',
+            data={
+                'group_id': VK_GROUP_ID,
+                'access_token': VK_USER_TOKEN,  # Используем User Token!
+                'v': '5.199'
+            }
+        )
+        
+        print(f"   📤 Запрос URL: статус {upload_url_req.status_code}")
+        upload_url_data = upload_url_req.json()
+        
+        if 'response' not in upload_url_data:
+            print(f"   ❌ Ошибка получения URL: {upload_url_data}")
+            return None
+        
+        upload_url = upload_url_data['response']['upload_url']
+        print(f"   📥 URL получен: {upload_url[:80]}...")
+        
+        # 2. Загружаем фото на полученный URL
+        with open(image_path, 'rb') as f:
+            files = {'photo': f}
+            upload_response = requests.post(upload_url, files=files)
+            upload_result = upload_response.json()
+        
+        print(f"   📤 Загрузка завершена")
+        
+        if not upload_result.get('photo'):
+            print(f"   ❌ Нет photo в ответе: {upload_result}")
+            return None
+        
+        # 3. Сохраняем фото через photos.saveWallPhoto
+        save_req = requests.post(
+            'https://api.vk.com/method/photos.saveWallPhoto',
+            data={
+                'photo': upload_result['photo'],
+                'server': upload_result.get('server', ''),
+                'hash': upload_result.get('hash', ''),
+                'group_id': VK_GROUP_ID,
+                'access_token': VK_USER_TOKEN,
+                'v': '5.199'
+            }
+        )
+        save_result = save_req.json()
+        
+        print(f"   💾 Сохранение: {save_result}")
+        
+        if 'response' in save_result:
+            photo_id = save_result['response'][0]['id']
+            owner_id = save_result['response'][0]['owner_id']
+            
+            attachment = f'photo{owner_id}_{photo_id}'
+            print(f"   ✅ Картинка загружена! {attachment}")
+            return attachment
+        else:
+            print(f"   ❌ Ошибка сохранения: {save_result}")
+            return None
+            
+    except Exception as e:
+        print(f"   ❌ Ошибка загрузки картинки: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+    finally:
+        # Удаляем временный файл
+        if image_path and os.path.exists(image_path):
+            try:
+                os.remove(image_path)
+                print(f"   🗑️ Временный файл удалён")
+            except:
+                pass
+
+def post_to_vk(message, attachment=None):
+    """Публикует пост в VK (с картинкой или без)"""
     url = 'https://api.vk.com/method/wall.post'
     
     params = {
@@ -361,6 +465,10 @@ def post_to_vk(message):
         'access_token': VK_ACCESS_TOKEN,
         'v': '5.199'
     }
+    
+    # Если есть картинка — добавляем
+    if attachment:
+        params['attachment'] = attachment
     
     response = requests.post(url, data=params)
     result = response.json()
@@ -414,15 +522,18 @@ def main():
     news_batch = _mix_sources(new_items, MAX_NEWS_FOR_POST)
     print(f"\n📋 Формируем дайджест из {len(news_batch)} новостей...")
     
-    # 7. Выбираем случайную картинку
+    # 7. Выбираем случайную картинку и загружаем в VK
     print("\n🎨 Подготовка картинки...")
     image_url = get_random_image_url()
+    temp_image_path = download_image(image_url)
+    vk_attachment = None
     
-    # 8. Формируем пост
+    if temp_image_path:
+        vk_attachment = upload_image_to_vk(temp_image_path)
+    
+    # 8. Формируем пост (БЕЗ ссылки на картинку в тексте)
     today = datetime.now().strftime("%d %B %Y").replace(' 0', ' ')
-    
-    # Добавляем картинку в начало поста (VK создаст превью)
-    message = f"📰 АГРО ДАЙДЖЕСТ | {today}\n\n{image_url}\n\n"
+    message = f"📰 АГРО ДАЙДЖЕСТ | {today}\n\n"
     sources = set()
     
     for i, news in enumerate(news_batch, 1):
@@ -482,9 +593,9 @@ def main():
     
     print(f"\n💬 Сообщение ({len(message)} символов):")
     
-    # 9. Публикуем в VK
+    # 9. Публикуем в VK с картинкой
     print("\n📤 Публикация в VK...")
-    success_vk = post_to_vk(message)
+    success_vk = post_to_vk(message, attachment=vk_attachment)
     
     if success_vk:
         # 10. Отмечаем как опубликованные
@@ -496,7 +607,7 @@ def main():
         print(f"   Новостей: {len(news_batch)}")
         print(f"   Источников: {len(sources)}")
         print(f"   Источники: {', '.join(sources)}")
-        print(f"   Картинка: {image_url}")
+        print(f"   Картинка: {'✅' if vk_attachment else '❌'}")
     else:
         print("\n❌ Ошибка публикации")
 
