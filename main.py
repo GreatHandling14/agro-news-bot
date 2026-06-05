@@ -394,7 +394,7 @@ def upload_image_to_vk(image_path):
         return None
     
     try:
-        # 1. Получаем URL для загрузки
+        # 1. Получаем URL для загрузки через правильный метод
         upload_url_req = requests.get(
             'https://api.vk.com/method/photos.getWallUploadURL',
             params={
@@ -403,6 +403,8 @@ def upload_image_to_vk(image_path):
                 'v': '5.199'
             }
         )
+        
+        print(f"   📤 Запрос URL: {upload_url_req.status_code}")
         upload_url_data = upload_url_req.json()
         
         if 'response' not in upload_url_data:
@@ -410,12 +412,15 @@ def upload_image_to_vk(image_path):
             return None
         
         upload_url = upload_url_data['response']['upload_url']
+        print(f"   📥 URL получен: {upload_url[:50]}...")
         
-        # 2. Загружаем фото
+        # 2. Загружаем фото на полученный URL
         with open(image_path, 'rb') as f:
             files = {'photo': f}
             upload_response = requests.post(upload_url, files=files)
             upload_result = upload_response.json()
+        
+        print(f"   📤 Загрузка фото: {upload_result.get('photo', 'NO PHOTO')[:50] if upload_result.get('photo') else 'EMPTY'}...")
         
         if not upload_result.get('photo'):
             print(f"   ❌ Ошибка загрузки фото: {upload_result}")
@@ -435,6 +440,8 @@ def upload_image_to_vk(image_path):
         )
         save_result = save_req.json()
         
+        print(f"   💾 Сохранение фото: {save_result}")
+        
         if 'response' in save_result:
             photo_id = save_result['response'][0]['id']
             owner_id = save_result['response'][0]['owner_id']
@@ -452,12 +459,15 @@ def upload_image_to_vk(image_path):
             
     except Exception as e:
         print(f"   ❌ Ошибка загрузки картинки: {e}")
+        import traceback
+        traceback.print_exc()
         return None
     finally:
         # Удаляем временный файл
         if image_path and os.path.exists(image_path):
             try:
                 os.remove(image_path)
+                print(f"   🗑️ Временный файл удалён")
             except:
                 pass
 
