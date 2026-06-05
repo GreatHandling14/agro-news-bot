@@ -461,8 +461,8 @@ def upload_image_to_vk(image_path):
             except:
                 pass
 
-def post_to_vk(message):
-    """Публикует пост в VK"""
+def post_to_vk(message, attachment=None):
+    """Публикует пост в VK (с картинкой или без)"""
     url = 'https://api.vk.com/method/wall.post'
     
     params = {
@@ -471,6 +471,10 @@ def post_to_vk(message):
         'access_token': VK_ACCESS_TOKEN,
         'v': '5.199'
     }
+    
+    # Если есть картинка — добавляем
+    if attachment:
+        params['attachment'] = attachment
     
     response = requests.post(url, data=params)
     result = response.json()
@@ -481,7 +485,6 @@ def post_to_vk(message):
     else:
         print(f"❌ Ошибка VK API: {result}")
         return False
-
 def main():
     print("🚀 Запуск бота...")
     print(f"📋 Минимум новостей: {MIN_NEWS_FOR_POST}")
