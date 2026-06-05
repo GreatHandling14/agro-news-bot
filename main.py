@@ -360,6 +360,107 @@ def get_random_hashtags(count=4):
     """Возвращает случайные хештеги из пула"""
     return ' '.join(random.sample(HASHTAG_POOL, min(count, len(HASHTAG_POOL))))
 
+def get_random_image_url():
+    """Возвращает URL случайной картинки с хостинга"""
+    # 19 картинок в формате PNG
+    image_number = random.randint(1, 19)
+    image_url = f'https://agrokom.su/agro_news/{image_number}.png'
+    print(f"   🖼️ Выбрана картинка: {image_url}")
+    return image_url
+
+def download_image(image_url):
+    """Скачивает картинку по URL и возвращает путь к временному файлу"""
+    import tempfile
+    
+    try:
+        response = requests.get(image_url, timeout=15)
+        response.raise_for_status()
+        
+        # Сохраняем во временный файл
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
+        temp_file.write(response.content)
+        temp_file.close()
+        
+        print(f"   ✅ Картинка скачана: {temp_file.name}")
+        return temp_file.name
+        
+    except Exception as e:
+        print(f"   ❌ Ошибка скачивания картинки: {e}")
+        return None
+
+def upload_image_to_vk(image_path):
+    """Загружает картинку в VK и возвращает attachment строку"""
+    if not image_path:
+        return None
+    
+    try:
+        # 1. Получаем URL для загрузки
+        upload_url_req = requests.get(
+            'https://api.vk.com/method/photos.getWallUploadURL',
+            params={
+                'group_id': VK_GROUP_ID,
+                'access_token': VK_ACCESS_TOKEN,
+                'v': '5.199'
+            }
+        )
+        upload_url_data = upload_url_req.json()
+        
+        if 'response' not in upload_url_data:
+            print(f"   ❌ Ошибка получения URL загрузки: {upload_url_data}")
+            return None
+        
+        upload_url = upload_url_data['response']['upload_url']
+        
+        # 2. Загружаем фото
+        with open(image_path, 'rb') as f:
+            files = {'photo': f}
+            upload_response = requests.post(upload_url, files=files)
+            upload_result = upload_response.json()
+        
+        if not upload_result.get('photo'):
+            print(f"   ❌ Ошибка загрузки фото: {upload_result}")
+            return None
+        
+        # 3. Сохраняем фото
+        save_req = requests.post(
+            'https://api.vk.com/method/photos.saveWallPhoto',
+            data={
+                'photo': upload_result['photo'],
+                'server': upload_result.get('server', ''),
+                'hash': upload_result.get('hash', ''),
+                'group_id': VK_GROUP_ID,
+                'access_token': VK_ACCESS_TOKEN,
+                'v': '5.199'
+            }
+        )
+        save_result = save_req.json()
+        
+        if 'response' in save_result:
+            photo_id = save_result['response'][0]['id']
+            owner_id = save_result['response'][0]['owner_id']
+            access_key = save_result['response'][0].get('access_key', '')
+            
+            attachment = f'photo{owner_id}_{photo_id}'
+            if access_key:
+                attachment += f'_{access_key}'
+            
+            print(f"   ✅ Картинка загружена в VK! {attachment}")
+            return attachment
+        else:
+            print(f"   ❌ Ошибка сохранения фото: {save_result}")
+            return None
+            
+    except Exception as e:
+        print(f"   ❌ Ошибка загрузки картинки: {e}")
+        return None
+    finally:
+        # Удаляем временный файл
+        if image_path and os.path.exists(image_path):
+            try:
+                os.remove(image_path)
+            except:
+                pass
+
 def post_to_vk(message):
     """Публикует пост в VK"""
     url = 'https://api.vk.com/method/wall.post'
