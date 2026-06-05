@@ -389,16 +389,16 @@ def download_image(image_url):
         return None
 
 def upload_image_to_vk(image_path):
-    """Загружает картинку в VK через альтернативный метод"""
+    """Загружает картинку в VK через правильный метод API"""
     if not image_path:
         return None
     
     try:
-        # 1. Получаем URL для загрузки (альтернативный метод)
+        # 1. Получаем URL для загрузки через ПРАВИЛЬНЫЙ метод
         upload_url_req = requests.post(
-            'https://api.vk.com/method/photos.getOwnerPhotoUploadURL',
+            'https://api.vk.com/method/photos.getWallUploadServer',
             data={
-                'owner_id': f'-{VK_GROUP_ID}',  # Минус для группы
+                'group_id': VK_GROUP_ID,
                 'access_token': VK_ACCESS_TOKEN,
                 'v': '5.199'
             }
@@ -409,27 +409,12 @@ def upload_image_to_vk(image_path):
         
         if 'response' not in upload_url_data:
             print(f"   ❌ Ошибка получения URL: {upload_url_data}")
-            print(f"   💡 Попробуем метод photos.getMessagesUploadURL...")
-            
-            # Пробуем другой метод
-            upload_url_req = requests.post(
-                'https://api.vk.com/method/photos.getMessagesUploadURL',
-                data={
-                    'peer_id': VK_GROUP_ID,
-                    'access_token': VK_ACCESS_TOKEN,
-                    'v': '5.199'
-                }
-            )
-            upload_url_data = upload_url_req.json()
-            
-            if 'response' not in upload_url_data:
-                print(f"   ❌ Второй метод тоже не сработал: {upload_url_data}")
-                return None
+            return None
         
         upload_url = upload_url_data['response']['upload_url']
         print(f"   📥 URL получен: {upload_url[:80]}...")
         
-        # 2. Загружаем фото
+        # 2. Загружаем фото на полученный URL (POST запрос с файлом)
         with open(image_path, 'rb') as f:
             files = {'photo': f}
             upload_response = requests.post(upload_url, files=files)
@@ -441,18 +426,14 @@ def upload_image_to_vk(image_path):
             print(f"   ❌ Нет photo в ответе: {upload_result}")
             return None
         
-        # 3. Сохраняем фото (метод зависит от того какой URL использовали)
-        if 'photos.getOwnerPhotoUploadURL' in str(upload_url_req.request.body):
-            save_method = 'photos.saveOwnerPhoto'
-        else:
-            save_method = 'photos.saveMessagesPhoto'
-        
+        # 3. Сохраняем фото через photos.saveWallPhoto
         save_req = requests.post(
-            f'https://api.vk.com/method/{save_method}',
+            'https://api.vk.com/method/photos.saveWallPhoto',
             data={
                 'photo': upload_result['photo'],
                 'server': upload_result.get('server', ''),
                 'hash': upload_result.get('hash', ''),
+                'group_id': VK_GROUP_ID,
                 'access_token': VK_ACCESS_TOKEN,
                 'v': '5.199'
             }
