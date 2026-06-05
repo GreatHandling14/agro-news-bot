@@ -387,12 +387,14 @@ def upload_image_to_vk(image_path):
             'https://api.vk.com/method/photos.getWallUploadServer',
             data={
                 'group_id': VK_GROUP_ID,
-                'access_token': VK_USER_TOKEN,  # Используем User Token!
+                'access_token': VK_USER_TOKEN,
                 'v': '5.199'
             }
         )
         
         print(f"   📤 Запрос URL: статус {upload_url_req.status_code}")
+        print(f"   📄 Ответ API: {upload_url_req.text[:200]}")
+        
         upload_url_data = upload_url_req.json()
         
         if 'response' not in upload_url_data:
@@ -400,21 +402,33 @@ def upload_image_to_vk(image_path):
             return None
         
         upload_url = upload_url_data['response']['upload_url']
-        print(f"   📥 URL получен: {upload_url[:80]}...")
+        print(f"   📥 URL получен: {upload_url}")
         
         # 2. Загружаем фото на полученный URL
+        print(f"   📤 Загрузка файла: {image_path}")
         with open(image_path, 'rb') as f:
             files = {'photo': f}
             upload_response = requests.post(upload_url, files=files)
-            upload_result = upload_response.json()
         
-        print(f"   📤 Загрузка завершена")
+        print(f"   📄 Статус загрузки: {upload_response.status_code}")
+        print(f"   📄 Ответ сервера: {upload_response.text[:500]}")
+        
+        # Пробуем распарсить JSON
+        try:
+            upload_result = upload_response.json()
+        except json.JSONDecodeError as e:
+            print(f"   ❌ Ошибка парсинга JSON: {e}")
+            print(f"   ❌ Получено: {upload_response.text[:500]}")
+            return None
+        
+        print(f"   📤 Результат загрузки: {upload_result}")
         
         if not upload_result.get('photo'):
             print(f"   ❌ Нет photo в ответе: {upload_result}")
             return None
         
         # 3. Сохраняем фото через photos.saveWallPhoto
+        print(f"   💾 Сохранение фото...")
         save_req = requests.post(
             'https://api.vk.com/method/photos.saveWallPhoto',
             data={
@@ -428,7 +442,7 @@ def upload_image_to_vk(image_path):
         )
         save_result = save_req.json()
         
-        print(f"   💾 Сохранение: {save_result}")
+        print(f"   💾 Результат сохранения: {save_result}")
         
         if 'response' in save_result:
             photo_id = save_result['response'][0]['id']
