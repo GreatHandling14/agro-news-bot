@@ -599,12 +599,21 @@ def main():
     
     print(f"\n💬 Сообщение ({len(message)} символов):")
     
-    # 8. Публикуем в VK
-    print("\n📤 Публикация в VK...")
-    success = post_to_vk(message)
+        # 8. Выбираем случайную картинку
+    print("\n🎨 Подготовка картинки...")
+    image_url = get_random_image_url()
+    temp_image_path = download_image(image_url)
+    vk_attachment = None
     
-    if success:
-        # 9. Отмечаем как опубликованные
+    if temp_image_path:
+        vk_attachment = upload_image_to_vk(temp_image_path)
+    
+    # 9. Публикуем в VK
+    print("\n📤 Публикация в VK...")
+    success_vk = post_to_vk(message, attachment=vk_attachment)
+    
+    if success_vk:
+        # 10. Отмечаем как опубликованные
         print("\n💾 Сохранение опубликованных...")
         for news in news_batch:
             mark_as_published(news['link'], news['title'])
