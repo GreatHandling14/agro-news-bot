@@ -40,17 +40,11 @@ HASHTAG_POOL = [
 # === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===
 
 def _clean_title(title):
-    """Убирает лишний мусор из заголовка (но даты теперь разделены в HTML)"""
-    # 1. Убираем переносы строк
+    """Убирает лишний мусор из заголовка"""
     title = title.replace('\n', ' ').replace('\r', ' ')
-    
-    # 2. Убираем "via ..." (от Google)
     title = re.sub(r'\s*via\s+\S+', '', title, flags=re.IGNORECASE)
-    
-    # 3. Убираем лишние пробелы
     title = ' '.join(title.split())
     
-    # 4. Убираем точку в конце
     if title.endswith('.'):
         title = title[:-1]
     
@@ -72,11 +66,10 @@ def _extract_source_from_google(entry):
     return urlparse(link).netloc.replace('www.', '')
 
 def _mix_sources(items, max_count):
-    """Чередует новости из разных источников (до 3 источников)"""
+    """Чередует новости из разных источников"""
     if not items:
         return []
     
-    # Группируем по источникам
     by_source = {}
     for item in items:
         src = item['source']
@@ -88,7 +81,6 @@ def _mix_sources(items, max_count):
     for src, src_items in by_source.items():
         print(f"      {src}: {len(src_items)}")
     
-    # Чередуем источники
     mixed = []
     source_names = list(by_source.keys())
     
@@ -184,7 +176,7 @@ def mark_as_published(url, title):
     print(f"   ✅ Отмечено как опубликованное")
 
 def parse_all_rss():
-    """Парсит все RSS ленты (Agroinvestor + Google News)"""
+    """Парсит все RSS ленты"""
     all_items = []
     
     for rss_url in RSS_URLS:
@@ -250,7 +242,7 @@ def parse_all_rss():
     return all_items
 
 def parse_dairynews_kz():
-    """Парсит новости dairynews.today/kz/ (ИСПОЛЬЗУЕТ .main-news-item)"""
+    """Парсит новости dairynews.today/kz/"""
     url = 'https://dairynews.today/kz/'
     print(f"\n📰 Парсинг HTML: {url}")
     
@@ -268,7 +260,6 @@ def parse_dairynews_kz():
         print(f"   Найдено блоков: {len(news_blocks)}")
         
         for block in news_blocks:
-            # 1. Заголовок
             title_tag = block.find('h3', class_='title')
             if not title_tag:
                 continue
@@ -279,22 +270,18 @@ def parse_dairynews_kz():
             if not title or len(title) < 10:
                 continue
             
-            # 2. ССЫЛКА
             link_tag = block.find('a', class_='title-link')
             if not link_tag:
                 continue
             
             link = link_tag.get('href')
             
-            # Если ссылка относительная — делаем абсолютной
             if link:
                 if link.startswith('/kz/'):
                     link = 'https://dairynews.today' + link
                 elif link.startswith('/'):
                     link = 'https://dairynews.today/kz' + link
-                # Если уже полная ссылка — оставляем как есть
             
-            # 3. Дата
             date_span = block.find('span', class_='data')
             date_text = date_span.get_text(strip=True) if date_span else ''
             
@@ -305,13 +292,10 @@ def parse_dairynews_kz():
                 except:
                     pass
             
-            # 4. Описание — ИСПРАВЛЕНО (не обрезаем на полуслове)
             desc_tag = block.find('div', class_='text')
             if desc_tag:
                 full_desc = desc_tag.get_text(strip=True)
-                # Обрезаем на границе предложения или слова
                 if len(full_desc) > 200:
-                    # Ищем последнюю точку или пробел
                     cut_desc = full_desc[:200]
                     last_period = cut_desc.rfind('.')
                     last_space = cut_desc.rfind(' ')
@@ -362,113 +346,13 @@ def get_random_hashtags(count=4):
 
 def get_random_image_url():
     """Возвращает URL случайной картинки с хостинга"""
-    # 19 картинок в формате PNG
     image_number = random.randint(1, 19)
     image_url = f'https://agrokom.su/agro_news/{image_number}.png'
     print(f"   🖼️ Выбрана картинка: {image_url}")
     return image_url
 
-def download_image(image_url):
-    """Скачивает картинку по URL и возвращает путь к временному файлу"""
-    import tempfile
-    
-    try:
-        response = requests.get(image_url, timeout=15)
-        response.raise_for_status()
-        
-        # Сохраняем во временный файл
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
-        temp_file.write(response.content)
-        temp_file.close()
-        
-        print(f"   ✅ Картинка скачана: {temp_file.name}")
-        return temp_file.name
-        
-    except Exception as e:
-        print(f"   ❌ Ошибка скачивания картинки: {e}")
-        return None
-
-def upload_image_to_vk(image_path):
-    """Загружает картинку в VK через правильный метод API"""
-    if not image_path:
-        return None
-    
-    try:
-        # 1. Получаем URL для загрузки через ПРАВИЛЬНЫЙ метод
-        upload_url_req = requests.post(
-            'https://api.vk.com/method/photos.getWallUploadServer',
-            data={
-                'group_id': VK_GROUP_ID,
-                'access_token': VK_ACCESS_TOKEN,
-                'v': '5.199'
-            }
-        )
-        
-        print(f"   📤 Запрос URL: статус {upload_url_req.status_code}")
-        upload_url_data = upload_url_req.json()
-        
-        if 'response' not in upload_url_data:
-            print(f"   ❌ Ошибка получения URL: {upload_url_data}")
-            return None
-        
-        upload_url = upload_url_data['response']['upload_url']
-        print(f"   📥 URL получен: {upload_url[:80]}...")
-        
-        # 2. Загружаем фото на полученный URL (POST запрос с файлом)
-        with open(image_path, 'rb') as f:
-            files = {'photo': f}
-            upload_response = requests.post(upload_url, files=files)
-            upload_result = upload_response.json()
-        
-        print(f"   📤 Загрузка завершена")
-        
-        if not upload_result.get('photo'):
-            print(f"   ❌ Нет photo в ответе: {upload_result}")
-            return None
-        
-        # 3. Сохраняем фото через photos.saveWallPhoto
-        save_req = requests.post(
-            'https://api.vk.com/method/photos.saveWallPhoto',
-            data={
-                'photo': upload_result['photo'],
-                'server': upload_result.get('server', ''),
-                'hash': upload_result.get('hash', ''),
-                'group_id': VK_GROUP_ID,
-                'access_token': VK_ACCESS_TOKEN,
-                'v': '5.199'
-            }
-        )
-        save_result = save_req.json()
-        
-        print(f"   💾 Сохранение: {save_result}")
-        
-        if 'response' in save_result:
-            photo_id = save_result['response'][0]['id']
-            owner_id = save_result['response'][0]['owner_id']
-            
-            attachment = f'photo{owner_id}_{photo_id}'
-            print(f"   ✅ Картинка загружена! {attachment}")
-            return attachment
-        else:
-            print(f"   ❌ Ошибка сохранения: {save_result}")
-            return None
-            
-    except Exception as e:
-        print(f"   ❌ Ошибка загрузки картинки: {e}")
-        import traceback
-        traceback.print_exc()
-        return None
-    finally:
-        # Удаляем временный файл
-        if image_path and os.path.exists(image_path):
-            try:
-                os.remove(image_path)
-                print(f"   🗑️ Временный файл удалён")
-            except:
-                pass
-
-def post_to_vk(message, attachment=None):
-    """Публикует пост в VK (с картинкой или без)"""
+def post_to_vk(message):
+    """Публикует пост в VK"""
     url = 'https://api.vk.com/method/wall.post'
     
     params = {
@@ -477,10 +361,6 @@ def post_to_vk(message, attachment=None):
         'access_token': VK_ACCESS_TOKEN,
         'v': '5.199'
     }
-    
-    # Если есть картинка — добавляем
-    if attachment:
-        params['attachment'] = attachment
     
     response = requests.post(url, data=params)
     result = response.json()
@@ -491,11 +371,12 @@ def post_to_vk(message, attachment=None):
     else:
         print(f"❌ Ошибка VK API: {result}")
         return False
+
 def main():
     print("🚀 Запуск бота...")
     print(f"📋 Минимум новостей: {MIN_NEWS_FOR_POST}")
     print(f"📋 Максимум новостей: {MAX_NEWS_FOR_POST}")
-    print(f" Возраст новостей: до {MAX_AGE_DAYS} дней")
+    print(f"📋 Возраст новостей: до {MAX_AGE_DAYS} дней")
     
     # 1. Парсим ВСЕ источники
     print("\n📰 Парсинг всех источников...")
@@ -526,34 +407,35 @@ def main():
         print("   Ждём следующего запуска...")
         return
     
-    # 5. Сортируем по дате (сначала новые)
+    # 5. Сортируем по дате
     new_items.sort(key=lambda x: x['published_at'], reverse=True)
     
-    # 6. ЧЕРЕДУЕМ 3 ИСТОЧНИКА
+    # 6. ЧЕРЕДУЕМ ИСТОЧНИКИ
     news_batch = _mix_sources(new_items, MAX_NEWS_FOR_POST)
     print(f"\n📋 Формируем дайджест из {len(news_batch)} новостей...")
     
-    # 7. Формируем пост
+    # 7. Выбираем случайную картинку
+    print("\n🎨 Подготовка картинки...")
+    image_url = get_random_image_url()
+    
+    # 8. Формируем пост
     today = datetime.now().strftime("%d %B %Y").replace(' 0', ' ')
-    message = f"📰 АГРО ДАЙДЖЕСТ | {today}\n\n"
+    
+    # Добавляем картинку в начало поста (VK создаст превью)
+    message = f"📰 АГРО ДАЙДЖЕСТ | {today}\n\n{image_url}\n\n"
     sources = set()
     
     for i, news in enumerate(news_batch, 1):
-        # Заголовок (теперь точно без даты)
         message += f"🔹 {news['title']}\n"
         
-        # Описание — умная обрезка (не на полуслове)
         if news['description']:
             full_desc = news['description'].strip()
             
-            # Обрезаем только если описание длинное
             if len(full_desc) > 200:
-                # Ищем последнюю точку в пределах 200 символов
                 cut_desc = full_desc[:200]
                 last_period = cut_desc.rfind('.')
                 last_space = cut_desc.rfind(' ')
                 
-                # Режем на границе предложения или слова
                 if last_period > 150:
                     desc = cut_desc[:last_period+1]
                 elif last_space > 150:
@@ -563,7 +445,6 @@ def main():
             else:
                 desc = full_desc
             
-            # Проверяем что описание отличается от заголовка
             title_lower = news['title'].lower().strip()
             desc_lower = desc.lower().strip()
             
@@ -582,19 +463,15 @@ def main():
             if not should_skip:
                 message += f"{desc}\n"
         
-        # ССЫЛКА НА СТАТЬЮ — ДОБАВЛЕНО
         if news['link']:
             message += f"🔗 {news['link']}\n"
         
-        # Источник
         domain = news['source']
         sources.add(domain)
         
-        
-        # Пустая строка
         message += "\n"
     
-    # === Хештеги и CTA - ОДИН РАЗ В КОНЦЕ ===
+    # === Хештеги и CTA ===
     hashtags = get_random_hashtags(4)
     cta = "🔔 Подписывайтесь @yugagronews, чтобы не пропустить важные агро-новости!"
     sources_str = ', '.join(sources)
@@ -605,18 +482,9 @@ def main():
     
     print(f"\n💬 Сообщение ({len(message)} символов):")
     
-        # 8. Выбираем случайную картинку
-    print("\n🎨 Подготовка картинки...")
-    image_url = get_random_image_url()
-    temp_image_path = download_image(image_url)
-    vk_attachment = None
-    
-    if temp_image_path:
-        vk_attachment = upload_image_to_vk(temp_image_path)
-    
     # 9. Публикуем в VK
     print("\n📤 Публикация в VK...")
-    success_vk = post_to_vk(message, attachment=vk_attachment)
+    success_vk = post_to_vk(message)
     
     if success_vk:
         # 10. Отмечаем как опубликованные
@@ -628,8 +496,9 @@ def main():
         print(f"   Новостей: {len(news_batch)}")
         print(f"   Источников: {len(sources)}")
         print(f"   Источники: {', '.join(sources)}")
+        print(f"   Картинка: {image_url}")
     else:
-        print("\n Ошибка публикации")
+        print("\n❌ Ошибка публикации")
 
 if __name__ == '__main__':
     main()
