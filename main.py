@@ -372,8 +372,8 @@ def download_image(image_url):
         print(f"   ❌ Ошибка скачивания картинки: {e}")
         return None
 
-def upload_image_to_vk(image_path):
-    """Загружает картинку в VK через User Token"""
+def upload_image_to_vk(image_path, max_retries=3):
+    """Загружает картинку в VK через User Token (с повторными попытками)"""
     if not image_path:
         return None
     
@@ -381,93 +381,122 @@ def upload_image_to_vk(image_path):
         print("   ❌ VK_USER_TOKEN не найден в переменных окружения")
         return None
     
-    try:
-        # 1. Получаем URL для загрузки
-        upload_url_req = requests.post(
-            'https://api.vk.com/method/photos.getWallUploadServer',
-            data={
-                'group_id': VK_GROUP_ID,
-                'access_token': VK_USER_TOKEN,
-                'v': '5.199'
-            }
-        )
-        
-        print(f"   📤 Запрос URL: статус {upload_url_req.status_code}")
-        print(f"   📄 Ответ API: {upload_url_req.text[:200]}")
-        
-        upload_url_data = upload_url_req.json()
-        
-        if 'response' not in upload_url_data:
-            print(f"   ❌ Ошибка получения URL: {upload_url_data}")
-            return None
-        
-        upload_url = upload_url_data['response']['upload_url']
-        print(f"   📥 URL получен: {upload_url}")
-        
-        # 2. Загружаем фото на полученный URL
-        print(f"   📤 Загрузка файла: {image_path}")
-        with open(image_path, 'rb') as f:
-            files = {'photo': f}
-            upload_response = requests.post(upload_url, files=files)
-        
-        print(f"   📄 Статус загрузки: {upload_response.status_code}")
-        print(f"   📄 Ответ сервера: {upload_response.text[:500]}")
-        
-        # Пробуем распарсить JSON
+    for attempt in range(max_retries):
         try:
-            upload_result = upload_response.json()
-        except json.JSONDecodeError as e:
-            print(f"   ❌ Ошибка парсинга JSON: {e}")
-            print(f"   ❌ Получено: {upload_response.text[:500]}")
-            return None
-        
-        print(f"   📤 Результат загрузки: {upload_result}")
-        
-        if not upload_result.get('photo'):
-            print(f"   ❌ Нет photo в ответе: {upload_result}")
-            return None
-        
-        # 3. Сохраняем фото через photos.saveWallPhoto
-        print(f"   💾 Сохранение фото...")
-        save_req = requests.post(
-            'https://api.vk.com/method/photos.saveWallPhoto',
-            data={
-                'photo': upload_result['photo'],
-                'server': upload_result.get('server', ''),
-                'hash': upload_result.get('hash', ''),
-                'group_id': VK_GROUP_ID,
-                'access_token': VK_USER_TOKEN,
-                'v': '5.199'
-            }
-        )
-        save_result = save_req.json()
-        
-        print(f"   💾 Результат сохранения: {save_result}")
-        
-        if 'response' in save_result:
-            photo_id = save_result['response'][0]['id']
-            owner_id = save_result['response'][0]['owner_id']
+            print(f"   📤 Попытка {attempt + 1} из {max_retries}...")
             
-            attachment = f'photo{owner_id}_{photo_id}'
-            print(f"   ✅ Картинка загружена! {attachment}")
-            return attachment
-        else:
-            print(f"   ❌ Ошибка сохранения: {save_result}")
-            return None
+            # 1. Получаем URL для загрузки
+            upload_url_req = requests.post(
+                'https://api.vk.com/method/photos.getWallUploadServer',
+                data={
+                    'group_id': VK_GROUP_ID,
+                    'access_token': VK_USER_TOKEN,
+                    'v': '5.199'
+                },
+                timeout=30
+            )
             
-    except Exception as e:
-        print(f"   ❌ Ошибка загрузки картинки: {e}")
-        import traceback
-        traceback.print_exc()
-        return None
-    finally:
-        # Удаляем временный файл
-        if image_path and os.path.exists(image_path):
-            try:
-                os.remove(image_path)
-                print(f"   🗑️ Временный файл удалён")
-            except:
-                pass
+            print(f"   📤 Запрос URL: статус {upload_url_req.status_code}")
+            upload_url_data = upload_url_req.json()
+            
+            if 'response' not in upload_url_data:
+                print(f"   ❌ Ошибка получения URL: {upload_url_data}")
+                return None
+            
+            upload_url = upload_url_data['response']['upload_url']
+            print(f"   📥 URL получен")
+            
+            # 2. Загружаем фото с повторными попытками
+            for upload_attempt in range(3):
+                try:
+                    with open(image_path, 'rb') as f:
+                        files = {'photo': f}
+                        upload_response = requests.post(
+                            upload_url, 
+                            files=files,
+                            timeout=60  # Увеличенный таймаут
+                        )
+                    
+                    print(f"   📄 Статус загрузки: {upload_response.status_code}")
+                    
+                    # Проверяем что вернулся JSON
+                    if upload_response.status_code == 200:
+                        try:
+                            upload_result = upload_response.json()
+                            break  # Успешно распарсили
+                        except json.JSONDecodeError:
+                            print(f"   ⚠️ Не JSON ответ, пробуем ещё раз...")
+                            if upload_attempt < 2:
+                                import time
+                                time.sleep(2)  # Ждём 2 секунды
+                                continue
+                            else:
+                                print(f"   ❌ Ошибка парсинга JSON: {upload_response.text[:200]}")
+                                return None
+                    else:
+                        print(f"   ⚠️ Ошибка {upload_response.status_code}, пробуем ещё раз...")
+                        if upload_attempt < 2:
+                            import time
+                            time.sleep(2)
+                            continue
+                        else:
+                            print(f"   ❌ Ошибка загрузки: {upload_response.text[:200]}")
+                            return None
+                
+                except requests.Timeout:
+                    print(f"   ⏱️ Таймаут загрузки, попытка {upload_attempt + 1}")
+                    if upload_attempt < 2:
+                        import time
+                        time.sleep(3)
+                        continue
+                    else:
+                        return None
+            
+            if not upload_result.get('photo'):
+                print(f"   ❌ Нет photo в ответе: {upload_result}")
+                return None
+            
+            print(f"   📤 Фото загружено успешно")
+            
+            # 3. Сохраняем фото
+            save_req = requests.post(
+                'https://api.vk.com/method/photos.saveWallPhoto',
+                data={
+                    'photo': upload_result['photo'],
+                    'server': upload_result.get('server', ''),
+                    'hash': upload_result.get('hash', ''),
+                    'group_id': VK_GROUP_ID,
+                    'access_token': VK_USER_TOKEN,
+                    'v': '5.199'
+                },
+                timeout=30
+            )
+            save_result = save_req.json()
+            
+            print(f"   💾 Результат сохранения: {save_result}")
+            
+            if 'response' in save_result:
+                photo_id = save_result['response'][0]['id']
+                owner_id = save_result['response'][0]['owner_id']
+                
+                attachment = f'photo{owner_id}_{photo_id}'
+                print(f"   ✅ Картинка загружена! {attachment}")
+                return attachment
+            else:
+                print(f"   ❌ Ошибка сохранения: {save_result}")
+                return None
+                
+        except Exception as e:
+            print(f"   ❌ Попытка {attempt + 1} не удалась: {e}")
+            if attempt < max_retries - 1:
+                import time
+                time.sleep(3)  # Ждём перед следующей попыткой
+                continue
+            else:
+                print(f"   ❌ Все {max_retries} попыток не удались")
+                return None
+    
+    return None
 
 def post_to_vk(message, attachment=None):
     """Публикует пост в VK (с картинкой или без)"""
