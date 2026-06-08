@@ -627,7 +627,7 @@ def main():
     
     # === Хештеги и CTA ===
     hashtags = get_random_hashtags(4)
-    cta = "🔔 Подписывайтесь @yugagronews, чтобы не пропустить важные агро-новости!"
+    cta = "🔔 Подпишись @yugagronews — каждый день свежие агро-новости без воды и спама!"
     sources_str = ', '.join(sources)
     
     message += f"📌 Источники: {sources_str}\n\n"
