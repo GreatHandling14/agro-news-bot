@@ -2,7 +2,7 @@ name: Post Agro News to VK
 
 on:
   schedule:
-    - cron: '0 7,15 * * *'  # 2 раза в 10 и 18 часов Мск
+    - cron: '0 6,15 * * *'  # 2 раза в 10 и 18 часов Мск
   workflow_dispatch:
 
 permissions:
