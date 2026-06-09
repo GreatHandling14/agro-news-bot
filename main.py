@@ -345,12 +345,26 @@ def get_random_hashtags(count=4):
     """Возвращает случайные хештеги из пула"""
     return ' '.join(random.sample(HASHTAG_POOL, min(count, len(HASHTAG_POOL))))
 
-def get_random_image_url():
-    """Возвращает URL случайной картинки с хостинга"""
-    image_number = random.randint(1, 19)
+def get_random_image_url(last_used_images=None):
+    """Возвращает URL случайной картинки (не повторяя последние 3)"""
+    
+    all_images = list(range(1, 20))  # 1-19
+    
+    if last_used_images:
+        # Исключаем последние 3
+        available_images = [img for img in all_images if img not in last_used_images[-3:]]
+    else:
+        available_images = all_images
+    
+    # Если осталось мало картинок — берём из всех
+    if len(available_images) < 3:
+        available_images = all_images
+    
+    image_number = random.choice(available_images)
     image_url = f'https://agrokom.su/agro_news/{image_number}.png'
-    print(f"   🖼️ Выбрана картинка: {image_url}")
-    return image_url
+    print(f"   🖼️ Выбрана картинка #{image_number}: {image_url}")
+    
+    return image_number, image_url
 
 def download_image(image_url):
     """Скачивает картинку по URL и возвращает путь к временному файлу"""
