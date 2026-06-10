@@ -22,9 +22,10 @@ MAX_NEWS_FOR_POST = 7
 MAX_AGE_DAYS = 14       # 2 недели
 
 VK_ACCESS_TOKEN = os.getenv('VK_ACCESS_TOKEN')
-VK_USER_TOKEN = os.getenv('VK_USER_TOKEN')  # Добавил User Token
+VK_USER_TOKEN = os.getenv('VK_USER_TOKEN')
 VK_GROUP_ID = os.getenv('VK_GROUP_ID')
 PUBLISHED_FILE = 'published.json'
+LAST_IMAGE_FILE = 'last_image.json'  # Отдельный файл для последней картинки
 
 # === ПУЛ ХЕШТЕГОВ ===
 HASHTAG_POOL = [
@@ -157,6 +158,59 @@ def save_to_repo(published):
         
     except Exception as e:
         print(f"   ⚠️ Ошибка сохранения: {e}")
+
+def load_last_image():
+    """Загружает номер последней использованной картинки"""
+    try:
+        repo = os.getenv('GITHUB_REPOSITORY')
+        token = os.getenv('GITHUB_TOKEN')
+        url = f'https://api.github.com/repos/{repo}/contents/{LAST_IMAGE_FILE}'
+        
+        headers = {'Authorization': f'token {token}'} if token else {}
+        response = requests.get(url, headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            import base64
+            content = base64.b64decode(data['content']).decode('utf-8')
+            last_image = json.loads(content)
+            print(f"   🖼️ Последняя картинка: #{last_image}")
+            return last_image
+        else:
+            print("   📭 Файл last_image.json не найден")
+            return None
+    except Exception as e:
+        print(f"   ⚠️ Ошибка загрузки last_image: {e}")
+        return None
+
+def save_last_image(image_number):
+    """Сохраняет номер последней использованной картинки"""
+    try:
+        with open(LAST_IMAGE_FILE, 'w', encoding='utf-8') as f:
+            json.dump(image_number, f)
+        
+        subprocess.run(['git', 'config', '--global', 'user.name', 'agro-bot'], 
+                      check=True, capture_output=True)
+        subprocess.run(['git', 'config', '--global', 'user.email', 'bot@agro.local'], 
+                      check=True, capture_output=True)
+        
+        subprocess.run(['git', 'add', LAST_IMAGE_FILE], check=True, capture_output=True)
+        subprocess.run(['git', 'commit', '-m', f'Update last image to #{image_number}'], 
+                      check=True, capture_output=True)
+        
+        token = os.getenv('GITHUB_TOKEN')
+        repo = os.getenv('GITHUB_REPOSITORY')
+        remote_url = f'https://x-access-token:{token}@github.com/{repo}.git'
+        
+        subprocess.run(['git', 'remote', 'set-url', 'origin', remote_url], 
+                      check=True, capture_output=True)
+        subprocess.run(['git', 'push', 'origin', 'main'], 
+                      check=True, capture_output=True)
+        
+        print(f"   ✅ Номер картинки сохранён: #{image_number}")
+        
+    except Exception as e:
+        print(f"   ⚠️ Ошибка сохранения last_image: {e}")
 
 def mark_as_published(url, title):
     """Добавляет URL в список опубликованных"""
@@ -362,7 +416,7 @@ def get_random_image_url(last_used_image=None):
     image_url = f'https://agrokom.su/agro_news/{image_number}.png'
     print(f"   🖼️ Выбрана картинка #{image_number}: {image_url}")
     
-    return image_url  # Возвращаем ТОЛЬКО URL
+    return image_number, image_url  # Возвращаем НОМЕР и URL
 
 def download_image(image_url):
     """Скачивает картинку по URL и возвращает путь к временному файлу"""
@@ -419,6 +473,7 @@ def upload_image_to_vk(image_path, max_retries=3):
             print(f"   📥 URL получен")
             
             # 2. Загружаем фото с повторными попытками
+            upload_result = None
             for upload_attempt in range(3):
                 try:
                     with open(image_path, 'rb') as f:
@@ -426,21 +481,20 @@ def upload_image_to_vk(image_path, max_retries=3):
                         upload_response = requests.post(
                             upload_url, 
                             files=files,
-                            timeout=60  # Увеличенный таймаут
+                            timeout=60
                         )
                     
                     print(f"   📄 Статус загрузки: {upload_response.status_code}")
                     
-                    # Проверяем что вернулся JSON
                     if upload_response.status_code == 200:
                         try:
                             upload_result = upload_response.json()
-                            break  # Успешно распарсили
+                            break
                         except json.JSONDecodeError:
                             print(f"   ⚠️ Не JSON ответ, пробуем ещё раз...")
                             if upload_attempt < 2:
                                 import time
-                                time.sleep(2)  # Ждём 2 секунды
+                                time.sleep(2)
                                 continue
                             else:
                                 print(f"   ❌ Ошибка парсинга JSON: {upload_response.text[:200]}")
@@ -464,7 +518,7 @@ def upload_image_to_vk(image_path, max_retries=3):
                     else:
                         return None
             
-            if not upload_result.get('photo'):
+            if not upload_result or not upload_result.get('photo'):
                 print(f"   ❌ Нет photo в ответе: {upload_result}")
                 return None
             
@@ -502,7 +556,7 @@ def upload_image_to_vk(image_path, max_retries=3):
             print(f"   ❌ Попытка {attempt + 1} не удалась: {e}")
             if attempt < max_retries - 1:
                 import time
-                time.sleep(3)  # Ждём перед следующей попыткой
+                time.sleep(3)
                 continue
             else:
                 print(f"   ❌ Все {max_retries} попыток не удались")
@@ -521,7 +575,6 @@ def post_to_vk(message, attachment=None):
         'v': '5.199'
     }
     
-    # Если есть картинка — добавляем
     if attachment:
         params['attachment'] = attachment
     
@@ -577,16 +630,17 @@ def main():
     news_batch = _mix_sources(new_items, MAX_NEWS_FOR_POST)
     print(f"\n📋 Формируем дайджест из {len(news_batch)} новостей...")
     
-    # 7. Выбираем случайную картинку и загружаем в VK
+    # 7. Выбираем случайную картинку (не повторяя последнюю)
     print("\n🎨 Подготовка картинки...")
-    image_url = get_random_image_url()
+    last_image = load_last_image()
+    image_number, image_url = get_random_image_url(last_image)
     temp_image_path = download_image(image_url)
     vk_attachment = None
     
     if temp_image_path:
         vk_attachment = upload_image_to_vk(temp_image_path)
     
-    # 8. Формируем пост (БЕЗ ссылки на картинку в тексте)
+    # 8. Формируем пост
     today = datetime.now().strftime("%d %B %Y").replace(' 0', ' ')
     message = f"📰 АГРО ДАЙДЖЕСТ | {today}\n\n"
     sources = set()
@@ -653,7 +707,11 @@ def main():
     success_vk = post_to_vk(message, attachment=vk_attachment)
     
     if success_vk:
-        # 10. Отмечаем как опубликованные
+        # 10. Сохраняем номер последней картинки
+        print("\n💾 Сохранение номера картинки...")
+        save_last_image(image_number)
+        
+        # 11. Отмечаем как опубликованные
         print("\n💾 Сохранение опубликованных...")
         for news in news_batch:
             mark_as_published(news['link'], news['title'])
@@ -662,7 +720,7 @@ def main():
         print(f"   Новостей: {len(news_batch)}")
         print(f"   Источников: {len(sources)}")
         print(f"   Источники: {', '.join(sources)}")
-        print(f"   Картинка: {'✅' if vk_attachment else '❌'}")
+        print(f"   Картинка: {'✅' if vk_attachment else '❌'} (#{image_number})")
     else:
         print("\n❌ Ошибка публикации")
 
