@@ -438,8 +438,8 @@ def download_image(image_url):
         print(f"   ❌ Ошибка скачивания картинки: {e}")
         return None
 
-def upload_image_to_vk(image_path, max_retries=3):
-    """Загружает картинку в VK через User Token (с повторными попытками)"""
+def upload_image_to_vk(image_path, max_retries=5):
+    """Загружает картинку в VK через User Token (с увеличенными попытками)"""
     if not image_path:
         return None
     
@@ -447,11 +447,17 @@ def upload_image_to_vk(image_path, max_retries=3):
         print("   ❌ VK_USER_TOKEN не найден в переменных окружения")
         return None
     
+    import time
+    
     for attempt in range(max_retries):
         try:
             print(f"   📤 Попытка {attempt + 1} из {max_retries}...")
             
-            # 1. Получаем URL для загрузки
+            # 1. Получаем URL для загрузки (с паузой перед запросом)
+            if attempt > 0:
+                print(f"   ⏳ Пауза 5 секунд перед повторной попыткой...")
+                time.sleep(5)
+            
             upload_url_req = requests.post(
                 'https://api.vk.com/method/photos.getWallUploadServer',
                 data={
@@ -467,52 +473,73 @@ def upload_image_to_vk(image_path, max_retries=3):
             
             if 'response' not in upload_url_data:
                 print(f"   ❌ Ошибка получения URL: {upload_url_data}")
+                if attempt < max_retries - 1:
+                    continue
                 return None
             
             upload_url = upload_url_data['response']['upload_url']
-            print(f"   📥 URL получен")
+            print(f"   📥 URL получен: {upload_url[:80]}...")
             
-            # 2. Загружаем фото с повторными попытками
+            # 2. Загружаем фото с УВЕЛИЧЕННЫМИ попытками
             upload_result = None
-            for upload_attempt in range(3):
+            for upload_attempt in range(5):  # Увеличил с 3 до 5
                 try:
+                    print(f"   📤 Загрузка файла (попытка {upload_attempt + 1}/5)...")
+                    
                     with open(image_path, 'rb') as f:
                         files = {'photo': f}
                         upload_response = requests.post(
                             upload_url, 
                             files=files,
-                            timeout=60
+                            timeout=120  # Увеличил с 60 до 120 секунд!
                         )
                     
                     print(f"   📄 Статус загрузки: {upload_response.status_code}")
                     
+                    # Если 504 или 502 — пробуем ещё раз
+                    if upload_response.status_code in [502, 504]:
+                        print(f"   ⚠️ Сервер VK перегружен ({upload_response.status_code})...")
+                        if upload_attempt < 4:
+                            wait_time = (upload_attempt + 1) * 5  # 5, 10, 15, 20 сек
+                            print(f"   ⏳ Ждём {wait_time} секунд...")
+                            time.sleep(wait_time)
+                            continue
+                        else:
+                            print(f"   ❌ Все попытки исчерпаны")
+                            return None
+                    
+                    # Проверяем что вернулся JSON
                     if upload_response.status_code == 200:
                         try:
                             upload_result = upload_response.json()
-                            break
-                        except json.JSONDecodeError:
-                            print(f"   ⚠️ Не JSON ответ, пробуем ещё раз...")
-                            if upload_attempt < 2:
-                                import time
-                                time.sleep(2)
+                            print(f"   ✅ JSON получен: {list(upload_result.keys())}")
+                            break  # Успешно распарсили
+                        except json.JSONDecodeError as e:
+                            print(f"   ❌ Ошибка парсинга JSON: {e}")
+                            print(f"   📄 Ответ: {upload_response.text[:200]}")
+                            if upload_attempt < 4:
+                                time.sleep(3)
                                 continue
                             else:
-                                print(f"   ❌ Ошибка парсинга JSON: {upload_response.text[:200]}")
                                 return None
                     else:
-                        print(f"   ⚠️ Ошибка {upload_response.status_code}, пробуем ещё раз...")
-                        if upload_attempt < 2:
-                            import time
-                            time.sleep(2)
+                        print(f"   ❌ Ошибка {upload_response.status_code}: {upload_response.text[:200]}")
+                        if upload_attempt < 4:
+                            time.sleep(3)
                             continue
                         else:
-                            print(f"   ❌ Ошибка загрузки: {upload_response.text[:200]}")
                             return None
                 
                 except requests.Timeout:
-                    print(f"   ⏱️ Таймаут загрузки, попытка {upload_attempt + 1}")
-                    if upload_attempt < 2:
-                        import time
+                    print(f"   ⏱️ Таймаут загрузки (попытка {upload_attempt + 1})")
+                    if upload_attempt < 4:
+                        time.sleep(5)
+                        continue
+                    else:
+                        return None
+                except Exception as e:
+                    print(f"   ❌ Ошибка загрузки: {e}")
+                    if upload_attempt < 4:
                         time.sleep(3)
                         continue
                     else:
@@ -525,6 +552,7 @@ def upload_image_to_vk(image_path, max_retries=3):
             print(f"   📤 Фото загружено успешно")
             
             # 3. Сохраняем фото
+            print(f"   💾 Сохранение фото...")
             save_req = requests.post(
                 'https://api.vk.com/method/photos.saveWallPhoto',
                 data={
@@ -539,7 +567,7 @@ def upload_image_to_vk(image_path, max_retries=3):
             )
             save_result = save_req.json()
             
-            print(f"   💾 Результат сохранения: {save_result}")
+            print(f"   💾 Результат: {save_result}")
             
             if 'response' in save_result:
                 photo_id = save_result['response'][0]['id']
@@ -555,8 +583,7 @@ def upload_image_to_vk(image_path, max_retries=3):
         except Exception as e:
             print(f"   ❌ Попытка {attempt + 1} не удалась: {e}")
             if attempt < max_retries - 1:
-                import time
-                time.sleep(3)
+                time.sleep(5)
                 continue
             else:
                 print(f"   ❌ Все {max_retries} попыток не удались")
